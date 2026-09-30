@@ -1,0 +1,524 @@
+// AeroGestion UNS - Sistema de Gestion Aerea (BHI // AIRPORT OPS)
+// PostgreSQL + Prisma ORM
+// Documentacion completa del modelo en docs/MODELO-DATOS.md
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// ENUMERACIONES
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  PASAJERO
+  MOSTRADOR
+  ADMIN
+}
+
+enum DocumentType {
+  DNI
+  PASAPORTE
+  CEDULA
+  OTRO
+}
+
+enum CabinClass {
+  ECONOMY
+  PREMIUM
+  BUSINESS
+  FIRST
+}
+
+enum AircraftStatus {
+  ACTIVE
+  MAINTENANCE
+  RETIRED
+}
+
+enum FlightStatus {
+  SCHEDULED
+  BOARDING
+  DEPARTED
+  ARRIVED
+  CANCELLED
+  DELAYED
+}
+
+enum SeatType {
+  WINDOW
+  AISLE
+  MIDDLE
+  EXIT
+}
+
+enum DemandLevel {
+  LOW
+  NORMAL
+  HIGH
+}
+
+enum TripType {
+  ROUND_TRIP
+  ONE_WAY
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  PAID
+  BOARDED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum PaymentMethod {
+  CREDIT_CARD
+  DEBIT_CARD
+  TRANSFER
+  CASH
+  WALLET
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REFUNDED
+}
+
+enum CheckInStatus {
+  NOT_STARTED
+  OPEN
+  DONE
+}
+
+enum BaggageType {
+  CABIN
+  HOLD
+  CARGO
+  SPECIAL
+}
+
+enum BaggageStatus {
+  REGISTERED
+  CHECKED
+  LOADED
+  DELIVERED
+  LOST
+}
+
+enum BoardingPassStatus {
+  ISSUED
+  USED
+  CANCELLED
+}
+
+// ---------------------------------------------------------------------------
+// IDENTIDAD Y ACCESO
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  role         UserRole  @default(PASAJERO)
+  /// Legajo / identificador operativo del personal (UNS)
+  legajo       String?   @unique
+  firstName    String    @map("first_name") @db.VarChar(80)
+  lastName     String    @map("last_name") @db.VarChar(80)
+  phone        String?   @db.VarChar(32)
+  avatarUrl    String?   @map("avatar_url")
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  passenger  Passenger?
+  sessions   Session[]
+  bookings   Booking[]
+  auditLogs  AuditLog[]
+
+  @@index([role])
+  @@index([isActive])
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  /// SHA-256 del token de cookie: nunca se persiste el token en claro
+  tokenHash String   @unique @map("token_hash") @db.Char(64)
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  ipAddress String?  @map("ip_address") @db.VarChar(64)
+  userAgent String?  @map("user_agent") @db.VarChar(256)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model AuditLog {
+  id        BigInt   @id @default(autoincrement())
+  userId    String?  @map("user_id")
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String   @db.VarChar(64)
+  entity    String   @db.VarChar(64)
+  entityId  String?  @map("entity_id") @db.VarChar(64)
+  metadata  Json?
+  ipAddress String?  @map("ip_address") @db.VarChar(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// INFRAESTRUCTURA AERONAUTICA
+// ---------------------------------------------------------------------------
+
+model Airport {
+  /// Codigo IATA de 3 letras (BHI, AEP, ...)
+  iataCode String @id @db.Char(3)
+  name     String @db.VarChar(120)
+  city     String @db.VarChar(80)
+  province String? @db.VarChar(80)
+  country  String @default("Argentina") @db.VarChar(80)
+  /// Zona horaria IANA (ej. America/Argentina/Buenos_Aires)
+  timezone String @default("America/Argentina/Buenos_Aires") @db.VarChar(64)
+  latitude  Decimal? @db.Decimal(9, 6)
+  longitude Decimal? @db.Decimal(9, 6)
+  isActive Boolean @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  baseAircraft Aircraft[] @relation("AircraftBase")
+  originRoutes  Route[]    @relation("RouteOrigin")
+  destinationRoutes Route[] @relation("RouteDestination")
+
+  @@map("airports")
+}
+
+model Aircraft {
+  id           String         @id @default(cuid())
+  /// Matricula de la aeronave (LV-CKU, LV-FPS, ...)
+  registration String         @unique @db.VarChar(12)
+  model        String         @db.VarChar(80)
+  manufacturer String         @db.VarChar(80)
+  /// Cantidad total de asientos disponibles
+  seatCount    Int            @default(150) @map("seat_count")
+  /// Descripcion de la disposicion de cabina (ej. "2-2 sin asiento al medio")
+  layout       String?        @db.VarChar(120)
+  hasWifi      Boolean        @default(false) @map("has_wifi")
+  hasUsbPower  Boolean        @default(false) @map("has_usb_power")
+  imageUrl     String?        @map("image_url")
+  status       AircraftStatus @default(ACTIVE)
+  baseAirportId String?       @map("base_airport_id")
+  baseAirport  Airport?       @relation("AircraftBase", fields: [baseAirportId], references: [iataCode], onDelete: SetNull)
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  seats   Seat[]
+  flights Flight[]
+
+  @@index([baseAirportId])
+  @@index([status])
+  @@map("aircraft")
+}
+
+model Seat {
+  id          String      @id @default(cuid())
+  aircraftId  String      @map("aircraft_id")
+  aircraft    Aircraft    @relation(fields: [aircraftId], references: [id], onDelete: Cascade)
+  rowNumber   Int         @map("row_number")
+  columnLetter String     @map("column_letter") @db.Char(1)
+  cabinClass  CabinClass  @default(ECONOMY) @map("cabin_class")
+  type        SeatType    @default(AISLE)
+  isExitRow   Boolean     @default(false) @map("is_exit_row")
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  bookingPassengers BookingPassenger[]
+  boardingPasses    BoardingPass[]
+
+  @@unique([aircraftId, rowNumber, columnLetter])
+  @@index([aircraftId, cabinClass])
+  @@map("seats")
+}
+
+model Route {
+  id                 String   @id @default(cuid())
+  code               String   @unique @db.VarChar(12)
+  originAirportId    String   @map("origin_airport_id") @db.Char(3)
+  originAirport      Airport  @relation("RouteOrigin", fields: [originAirportId], references: [iataCode], onDelete: Restrict)
+  destinationAirportId String  @map("destination_airport_id") @db.Char(3)
+  destinationAirport Airport  @relation("RouteDestination", fields: [destinationAirportId], references: [iataCode], onDelete: Restrict)
+  distanceKm         Int?     @map("distance_km")
+  durationMinutes    Int?     @map("duration_minutes")
+  isActive           Boolean  @default(true) @map("is_active")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  flights     Flight[]
+  weeklyFares WeeklyFare[]
+
+  @@index([originAirportId, destinationAirportId])
+  @@index([isActive])
+  @@map("routes")
+}
+
+model Flight {
+  id             String       @id @default(cuid())
+  /// Codigo de vuelo comercial (AG-1420)
+  code           String       @unique @db.VarChar(10)
+  routeId        String       @map("route_id")
+  route          Route        @relation(fields: [routeId], references: [id], onDelete: Restrict)
+  aircraftId     String       @map("aircraft_id")
+  aircraft       Aircraft     @relation(fields: [aircraftId], references: [id], onDelete: Restrict)
+  departureAt    DateTime     @map("departure_at") @db.Timestamptz(3)
+  arrivalAt      DateTime     @map("arrival_at") @db.Timestamptz(3)
+  status         FlightStatus @default(SCHEDULED)
+  isDirect       Boolean      @default(true) @map("is_direct")
+  /// Puntualidad historica en porcentaje (98, 96, 99...)
+  punctualityPct Decimal?     @map("punctuality_pct") @db.Decimal(5, 2)
+  /// Etiquetas libres mostradas en la tarjeta (ej. "VUELO NOCTURNO REGULAR")
+  tags           String[]     @default([])
+  notes          String?      @db.VarChar(255)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  fares         FlightFare[]
+  bookingFlights BookingFlight[]
+
+  @@index([routeId, departureAt])
+  @@index([departureAt])
+  @@index([status])
+  @@index([aircraftId])
+  @@map("flights")
+}
+
+// ---------------------------------------------------------------------------
+// TARIFAS
+// ---------------------------------------------------------------------------
+
+model Fare {
+  id               String      @id @default(cuid())
+  code             String      @unique @db.VarChar(24)
+  name             String      @db.VarChar(80)
+  cabinClass       CabinClass  @default(ECONOMY) @map("cabin_class")
+  basePrice        Decimal     @map("base_price") @db.Decimal(12, 2)
+  carryOnKg        Int         @default(8) @map("carry_on_kg")
+  checkedBagKg     Int         @default(0) @map("checked_bag_kg")
+  changeAllowed    Boolean     @default(false) @map("change_allowed")
+  seatSelection    Boolean     @default(false) @map("seat_selection")
+  refundable       Boolean     @default(false)
+  /// Iconos Material Symbols a mostrar en la tarjeta de tarifa
+  benefits         String[]    @default([])
+  isActive         Boolean     @default(true) @map("is_active")
+  createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  flightFares   FlightFare[]
+  bookingFlights BookingFlight[]
+
+  @@index([isActive])
+  @@map("fares")
+}
+
+/// Precio de una tarifa concreta para un vuelo concreto (con disponibilidad)
+model FlightFare {
+  id             String  @id @default(cuid())
+  flightId       String  @map("flight_id")
+  flight         Flight  @relation(fields: [flightId], references: [id], onDelete: Cascade)
+  fareId         String  @map("fare_id")
+  fare           Fare    @relation(fields: [fareId], references: [id], onDelete: Restrict)
+  price          Decimal @db.Decimal(12, 2)
+  availableSeats Int     @default(150) @map("available_seats")
+  currency       String  @default("ARS") @db.Char(3)
+
+  @@unique([flightId, fareId])
+  @@index([fareId])
+  @@map("flight_fares")
+}
+
+/// Precio de una ruta por dia -> alimenta el "Calendario Semanal de Tarifas"
+model WeeklyFare {
+  id           String       @id @default(cuid())
+  routeId      String       @map("route_id")
+  route        Route        @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  date         DateTime     @db.Date
+  price        Decimal      @db.Decimal(12, 2)
+  demandLevel  DemandLevel  @default(NORMAL) @map("demand_level")
+  currency     String       @default("ARS") @db.Char(3)
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([routeId, date])
+  @@index([date])
+  @@map("weekly_fares")
+}
+
+// ---------------------------------------------------------------------------
+// PASAJEROS Y RESERVAS
+// ---------------------------------------------------------------------------
+
+model Passenger {
+  id             String       @id @default(cuid())
+  /// Vincula el pasajero con su cuenta de acceso (opcional: puede no registrarse)
+  userId         String?      @unique @map("user_id")
+  user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  firstName      String       @map("first_name") @db.VarChar(80)
+  lastName       String       @map("last_name") @db.VarChar(80)
+  documentType   DocumentType @default(DNI) @map("document_type")
+  documentNumber String       @map("document_number") @db.VarChar(32)
+  birthDate      DateTime?    @map("birth_date") @db.Date
+  nationality    String?      @db.VarChar(64)
+  email          String?      @db.VarChar(160)
+  phone          String?      @db.VarChar(32)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  bookingPassengers BookingPassenger[]
+
+  @@unique([documentType, documentNumber])
+  @@index([lastName, firstName])
+  @@map("passengers")
+}
+
+model Booking {
+  id              String        @id @default(cuid())
+  /// Codigo de reserva publico (AG-7F3K9Q)
+  bookingCode     String        @unique @map("booking_code") @db.VarChar(12)
+  userId          String?       @map("user_id")
+  user            User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  tripType        TripType      @default(ONE_WAY) @map("trip_type")
+  status          BookingStatus @default(PENDING)
+  passengersCount Int           @default(1) @map("passengers_count")
+  cabinClass      CabinClass    @default(ECONOMY) @map("cabin_class")
+  totalAmount     Decimal       @default(0) @map("total_amount") @db.Decimal(12, 2)
+  currency        String        @default("ARS") @db.Char(3)
+  contactEmail    String        @map("contact_email") @db.VarChar(160)
+  contactPhone    String?       @map("contact_phone") @db.VarChar(32)
+  notes           String?       @db.VarChar(500)
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  flights         BookingFlight[]
+  passengers      BookingPassenger[]
+  payments        Payment[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("bookings")
+}
+
+/// Tramo reservado: un vuelo + la tarifa elegida para ese vuelo
+model BookingFlight {
+  id           String  @id @default(cuid())
+  bookingId    String  @map("booking_id")
+  booking      Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  flightId     String  @map("flight_id")
+  flight       Flight  @relation(fields: [flightId], references: [id], onDelete: Restrict)
+  fareId       String  @map("fare_id")
+  fare         Fare    @relation(fields: [fareId], references: [id], onDelete: Restrict)
+  /// Copia del precio pactada al momento de reservar
+  price        Decimal @db.Decimal(12, 2)
+  isReturn     Boolean @default(false) @map("is_return")
+  departureAt  DateTime @map("departure_at") @db.Timestamptz(3)
+
+  @@index([bookingId])
+  @@index([flightId])
+  @@map("booking_flights")
+}
+
+/// Pasajero concreto dentro de una reserva (con su asiento y check-in)
+model BookingPassenger {
+  id             String        @id @default(cuid())
+  bookingId      String        @map("booking_id")
+  booking        Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  /// Registro maestro del pasajero (puede ser null si se cargo al momento de la reserva)
+  passengerId    String?       @map("passenger_id")
+  passenger      Passenger?    @relation(fields: [passengerId], references: [id], onDelete: SetNull)
+  firstName      String        @map("first_name") @db.VarChar(80)
+  lastName       String        @map("last_name") @db.VarChar(80)
+  documentType   DocumentType  @default(DNI) @map("document_type")
+  documentNumber String        @map("document_number") @db.VarChar(32)
+  birthDate      DateTime?     @map("birth_date") @db.Date
+  seatId         String?       @map("seat_id")
+  seat           Seat?         @relation(fields: [seatId], references: [id], onDelete: SetNull)
+  checkInCode    String?       @map("check_in_code") @db.VarChar(12)
+  checkInStatus  CheckInStatus @default(NOT_STARTED) @map("check_in_status")
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  baggage       Baggage[]
+  boardingPass  BoardingPass?
+
+  @@index([bookingId])
+  @@index([passengerId])
+  @@index([seatId])
+  @@map("booking_passengers")
+}
+
+model Payment {
+  id             String        @id @default(cuid())
+  bookingId      String        @map("booking_id")
+  booking        Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  method         PaymentMethod
+  amount         Decimal       @db.Decimal(12, 2)
+  currency       String        @default("ARS") @db.Char(3)
+  status         PaymentStatus @default(PENDING)
+  /// Referencia de la transaccion del gateway (nunca se guardan datos de tarjeta)
+  transactionRef String?       @unique @map("transaction_ref") @db.VarChar(64)
+  installments   Int?
+  paidAt         DateTime?     @map("paid_at") @db.Timestamptz(3)
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([bookingId])
+  @@index([status])
+  @@map("payments")
+}
+
+model Baggage {
+  id                  String        @id @default(cuid())
+  bookingPassengerId  String        @map("booking_passenger_id")
+  bookingPassenger    BookingPassenger @relation(fields: [bookingPassengerId], references: [id], onDelete: Cascade)
+  /// Etiqueta de equipaje (ej. 0012345678)
+  tagCode             String        @unique @map("tag_code") @db.VarChar(16)
+  type                BaggageType   @default(HOLD)
+  weightKg            Decimal?      @map("weight_kg") @db.Decimal(6, 2)
+  status              BaggageStatus @default(REGISTERED)
+  createdAt           DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([bookingPassengerId])
+  @@index([status])
+  @@map("baggage")
+}
+
+model BoardingPass {
+  id                String              @id @default(cuid())
+  code              String              @unique @db.VarChar(16)
+  bookingPassengerId String             @unique @map("booking_passenger_id")
+  bookingPassenger  BookingPassenger    @relation(fields: [bookingPassengerId], references: [id], onDelete: Cascade)
+  seatId            String?             @map("seat_id")
+  seat              Seat?               @relation(fields: [seatId], references: [id], onDelete: SetNull)
+  flightCode        String              @map("flight_code") @db.VarChar(10)
+  status            BoardingPassStatus  @default(ISSUED)
+  issuedAt          DateTime            @default(now()) @map("issued_at") @db.Timestamptz(3)
+
+  @@index([flightCode])
+  @@index([status])
+  @@map("boarding_passes")
+}

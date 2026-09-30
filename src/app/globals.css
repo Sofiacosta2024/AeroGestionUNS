@@ -1,0 +1,157 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    overscroll-behavior: none;
+  }
+
+  main > :first-child {
+    margin-top: 0 !important;
+  }
+
+  main > :last-child {
+    margin-bottom: 0 !important;
+  }
+
+  ::-webkit-scrollbar {
+    display: none;
+  }
+
+  /*
+   * Foco visible solo por teclado: sin esto los botones y enlaces del menu
+   * (que son oscuros sobre el header) no tienen ninguna referencia visual al
+   * navegar con teclado olector de pantalla.
+   */
+  :focus-visible {
+    outline: 2px solid var(--ag-color-secondary, #e11d48);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/*
+ * Wrapper transparente de tema.
+ * `display: contents` hace que el div NO genere caja, por lo que el layout de
+ * sus hijos es identico a si el wrapper no existiera. Las custom properties
+ * si se heredan a traves de el, que es lo que necesitamos.
+ */
+.contents {
+  display: contents;
+}
+
+/* ------------------------------------------------------------------ */
+/* Tokens del tema de login.html                                       */
+/* ------------------------------------------------------------------ */
+.theme-login {
+  --ag-color-background: #f8fafc;
+  --ag-color-secondary: #e11d48;
+  --ag-color-surface: #f8fafc;
+
+  --ag-spacing-gutter: 1.25rem;
+  --ag-spacing-space-xl: 2rem;
+
+  --ag-fs-body-lg-size: 16px;
+  --ag-fs-body-lg-lh: 26px;
+  --ag-fs-body-lg-fw: 400;
+
+  --ag-fs-body-md-size: 14px;
+  --ag-fs-body-md-lh: 22px;
+  --ag-fs-body-md-fw: 400;
+
+  --ag-fs-body-sm-size: 12px;
+  --ag-fs-body-sm-lh: 18px;
+  --ag-fs-body-sm-fw: 400;
+
+  --ag-fs-headline-lg-size: 24px;
+  --ag-fs-headline-lg-lh: 32px;
+  --ag-fs-headline-lg-ls: -0.015em;
+  --ag-fs-headline-lg-fw: 700;
+
+  --ag-fs-headline-md-size: 20px;
+  --ag-fs-headline-md-lh: 28px;
+  --ag-fs-headline-md-ls: -0.01em;
+  --ag-fs-headline-md-fw: 600;
+
+  --ag-fs-headline-sm-size: 16px;
+  --ag-fs-headline-sm-lh: 24px;
+  --ag-fs-headline-sm-ls: -0.005em;
+  --ag-fs-headline-sm-fw: 600;
+
+  --ag-fs-headline-xl-size: 32px;
+  --ag-fs-headline-xl-lh: 40px;
+  --ag-fs-headline-xl-ls: -0.02em;
+  --ag-fs-headline-xl-fw: 700;
+
+  --ag-fs-headline-xl-mobile-size: 26px;
+  --ag-fs-headline-xl-mobile-lh: 34px;
+  --ag-fs-headline-xl-mobile-ls: -0.015em;
+  --ag-fs-headline-xl-mobile-fw: 700;
+}
+
+/* ------------------------------------------------------------------ */
+/* Tokens del tema de vuelos.html                                      */
+/* ------------------------------------------------------------------ */
+.theme-vuelos {
+  --ag-color-background: #f8f9ff;
+  --ag-color-secondary: #ba0035;
+  --ag-color-surface: #f8f9ff;
+
+  --ag-spacing-gutter: 1.5rem;
+  --ag-spacing-space-xl: 2.5rem;
+
+  --ag-fs-body-lg-size: 16px;
+  --ag-fs-body-lg-lh: 24px;
+  --ag-fs-body-lg-fw: 400;
+
+  --ag-fs-body-md-size: 14px;
+  --ag-fs-body-md-lh: 20px;
+  --ag-fs-body-md-fw: 400;
+
+  --ag-fs-body-sm-size: 12px;
+  --ag-fs-body-sm-lh: 16px;
+  --ag-fs-body-sm-fw: 400;
+
+  --ag-fs-headline-lg-size: 32px;
+  --ag-fs-headline-lg-lh: 40px;
+  --ag-fs-headline-lg-ls: -0.015em;
+  --ag-fs-headline-lg-fw: 700;
+
+  --ag-fs-headline-md-size: 24px;
+  --ag-fs-headline-md-lh: 32px;
+  --ag-fs-headline-md-ls: -0.01em;
+  --ag-fs-headline-md-fw: 700;
+
+  --ag-fs-headline-sm-size: 20px;
+  --ag-fs-headline-sm-lh: 28px;
+  --ag-fs-headline-sm-ls: -0.005em;
+  --ag-fs-headline-sm-fw: 600;
+
+  --ag-fs-headline-xl-size: 40px;
+  --ag-fs-headline-xl-lh: 48px;
+  --ag-fs-headline-xl-ls: -0.02em;
+  --ag-fs-headline-xl-fw: 800;
+
+  --ag-fs-headline-xl-mobile-size: 30px;
+  --ag-fs-headline-xl-mobile-lh: 38px;
+  --ag-fs-headline-xl-mobile-ls: -0.02em;
+  --ag-fs-headline-xl-mobile-fw: 800;
+}

@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AeroGestión UNS · Vuelos BHI → AEP</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f6f4fa;--card:#fff;--ink:#1a1027;--muted:#6b6478;--line:#e6e1ee;
+  --brand:#2e1065;--brand-2:#4a2a8a;--accent:#e11d48;--accent-ink:#fff;--tint:#f0eafb;--ok:#0f8a5f;
+  box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#120a20;--card:#1c1230;--ink:#f1ecfa;--muted:#a79cbb;--line:#33264d;--brand:#20104a;--brand-2:#b9a2f0;--accent:#f43f5e;--tint:#2a1d48;--ok:#4ade9f}}
+:root[data-theme="dark"]{--bg:#120a20;--card:#1c1230;--ink:#f1ecfa;--muted:#a79cbb;--line:#33264d;--brand:#20104a;--brand-2:#b9a2f0;--accent:#f43f5e;--tint:#2a1d48;--ok:#4ade9f}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 15px/1.5 "Plus Jakarta Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.wrap{max-width:1040px;margin:0 auto;padding:0 20px}
+
+/* Header */
+header{background:var(--brand);color:#fff}
+.top{display:flex;align-items:center;justify-content:space-between;gap:16px;height:64px}
+.logo{font-weight:800;font-size:19px;letter-spacing:-.01em}
+.logo b{color:#ff6b88}
+nav{display:flex;gap:4px;overflow-x:auto}
+nav a{color:#cdbff0;text-decoration:none;font-weight:600;font-size:14px;padding:8px 14px;border-radius:999px;white-space:nowrap}
+nav a[aria-current]{background:#fff;color:var(--brand)}
+.user{font-size:13px;font-weight:600;color:#cdbff0;white-space:nowrap}
+
+/* Route hero */
+.route{padding:28px 0 34px;display:grid;gap:18px}
+.cities{display:flex;align-items:center;gap:18px}
+.city b{display:block;font-size:clamp(44px,9vw,76px);font-weight:800;line-height:.95;letter-spacing:-.04em}
+.city span{font-size:13px;color:#cdbff0}
+.cities svg{flex:1;min-width:40px;height:24px}
+.meta{display:flex;flex-wrap:wrap;gap:8px}
+.meta span{background:rgba(255,255,255,.12);padding:6px 14px;border-radius:999px;font-size:13px;font-weight:600}
+
+/* Steps */
+.steps{display:flex;gap:22px;padding:14px 0;font-size:13px;font-weight:600;color:var(--muted);overflow-x:auto;white-space:nowrap}
+.steps .on{color:var(--accent)}
+.steps .on::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-right:8px}
+
+/* Days */
+h2{font-size:20px;letter-spacing:-.01em;margin:26px 0 4px}
+.sub{color:var(--muted);margin:0 0 14px;font-size:14px}
+.days{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px}
+.day{flex:1 0 96px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;text-align:left}
+.day small{display:block;color:var(--muted);font-size:12px;font-weight:600}
+.day strong{font-size:16px}
+.day.sel{background:var(--brand);border-color:var(--brand);color:#fff}
+.day.sel small{color:#cdbff0}
+.day.low strong{color:var(--ok)}
+.day.sel.low strong{color:#fff}
+.day.peak small:last-child{color:var(--accent)}
+
+/* Flights */
+.flight{background:var(--card);border:2px solid var(--line);border-radius:16px;padding:20px;margin-bottom:14px;display:grid;grid-template-columns:1.25fr 1fr;gap:22px}
+.flight.sel{border-color:var(--accent)}
+.tt{display:flex;align-items:center;gap:14px}
+.tt .t{font-size:32px;font-weight:800;letter-spacing:-.03em;line-height:1}
+.tt .a{font-size:12px;color:var(--muted);font-weight:600;margin-top:4px}
+.line{flex:1;position:relative;height:2px;background:repeating-linear-gradient(90deg,var(--line) 0 6px,transparent 6px 12px);text-align:center}
+.line i{position:absolute;left:50%;top:-18px;transform:translateX(-50%);font-style:normal;font-size:12px;font-weight:700;color:var(--muted);background:var(--card);padding:0 8px}
+.line::after{content:"";position:absolute;right:-2px;top:-4px;width:10px;height:10px;border-radius:50%;background:var(--accent)}
+.info{grid-column:1;color:var(--muted);font-size:13px;display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:4px}
+.info b{color:var(--ink)}
+.fares{grid-column:2;grid-row:1/3;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fare{border:1.5px solid var(--line);background:transparent;border-radius:12px;padding:12px;text-align:left;display:flex;flex-direction:column;gap:2px}
+.fare:hover{border-color:var(--brand-2)}
+.fare[aria-pressed="true"]{border-color:var(--accent);background:var(--tint)}
+.fare .n{font-weight:700;font-size:14px}
+.fare .d{font-size:12px;color:var(--muted);line-height:1.35;min-height:32px}
+.fare .p{font-size:18px;font-weight:800;letter-spacing:-.02em;margin-top:6px}
+.fare .p small{font-size:11px;font-weight:600;color:var(--muted)}
+
+/* Bottom bar */
+.bar{position:sticky;bottom:0;background:var(--brand);color:#fff;padding:14px 0 calc(14px + env(safe-area-inset-bottom,0px));margin-top:26px}
+.bar .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.sum small{display:block;color:#cdbff0;font-size:12px;font-weight:600}
+.sum strong{font-size:24px;letter-spacing:-.02em}
+.go{background:var(--accent);color:#fff;border:0;border-radius:12px;padding:14px 26px;font-weight:700;font-size:15px}
+.go:hover{filter:brightness(1.08)}
+footer{padding:22px 0 10px;font-size:12px;color:var(--muted)}
+
+@media(max-width:780px){
+  .flight{grid-template-columns:1fr}.fares{grid-column:1;grid-row:auto}
+  .user{display:none}.go{width:100%}
+}
+@media(prefers-reduced-motion:no-preference){.flight{transition:border-color .15s}}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="top">
+      <div class="logo">AeroGestión <b>UNS</b></div>
+      <nav aria-label="Principal">
+        <a href="#" aria-current="page">Buscar vuelos</a><a href="#">Mis reservas</a><a href="#">Check-in</a><a href="#">Alta de vuelos</a>
+      </nav>
+      <div class="user">Cmdte. Morales</div>
+    </div>
+    <div class="route">
+      <div class="cities">
+        <div class="city"><b>BHI</b><span>Bahía Blanca</span></div>
+        <svg viewBox="0 0 200 24" preserveAspectRatio="none" aria-hidden="true"><path d="M2 12H198" stroke="#8a72c4" stroke-width="2" stroke-dasharray="3 7" stroke-linecap="round"/><path d="M100 12l-7-8h4l9 8-9 8h-4z" fill="#ff6b88"/></svg>
+        <div class="city" style="text-align:right"><b>AEP</b><span>Aeroparque</span></div>
+      </div>
+      <div class="meta"><span>Ida y vuelta</span><span>Ida: mar 18 nov</span><span>Regreso: lun 24 nov</span><span>2 adultos</span></div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="steps" aria-label="Progreso"><span class="on">Vuelos</span><span>Asientos</span><span>Pago</span><span>Confirmación</span></div>
+
+  <h2>Elegí tu día de salida</h2>
+  <p class="sub">Precio por pasajero, por tramo, en pesos argentinos.</p>
+  <div class="days" id="days"></div>
+
+  <h2>Vuelos del martes 18 de noviembre</h2>
+  <p class="sub">3 vuelos directos · horarios en hora argentina.</p>
+  <div id="flights"></div>
+  <footer>Si un vuelo se demora más de 45 minutos por causas operativas, acreditamos una compensación en tu monedero.</footer>
+</main>
+
+<div class="bar">
+  <div class="wrap">
+    <div class="sum"><small id="sumTxt"></small><strong id="sumTot"></strong></div>
+    <button class="go" type="button">Continuar a asientos</button>
+  </div>
+</div>
+
+<script>
+const PAX = 2;
+const days = [["Dom","16",72500],["Lun","17",68900],["Mar","18",64200],["Mié","19",65400],["Jue","20",69800],["Vie","21",78200],["Sáb","22",71100]];
+const flights = [
+  {c:"AG-1420",d:"06:45",a:"07:55",eq:"Boeing 737-800",pt:"98%",f:[64200,138000]},
+  {c:"AG-1428",d:"13:20",a:"14:30",eq:"Embraer E190",pt:"96%",f:[68400,142000]},
+  {c:"AG-1436",d:"19:15",a:"20:25",eq:"Boeing 737-800",pt:"99%",f:[64200,138000]}
+];
+const fares = [
+  {n:"Economy Flex",d:"Mano 8 kg · cambios sin penalidad"},
+  {n:"UNS Corporativo",d:"Bodega 23 kg · asiento preferencial"}
+];
+const money = n => new Intl.NumberFormat("es-AR",{style:"currency",currency:"ARS",maximumFractionDigits:0}).format(n);
+let sel = {i:0,k:0};
+
+function renderDays(){
+  const min = Math.min(...days.map(x=>x[2])), max = Math.max(...days.map(x=>x[2]));
+  document.getElementById("days").innerHTML = days.map(([w,n,p])=>
+    `<button type="button" class="day ${n==="18"?"sel":""} ${p===min?"low":""} ${p===max?"peak":""}" ${n==="18"?'aria-pressed="true"':""}>
+      <small>${w} ${n} nov</small><strong>${money(p)}</strong>
+      <small>${p===min?"Más barato":p===max?"Alta demanda":"&nbsp;"}</small></button>`).join("");
+}
+
+function renderFlights(){
+  document.getElementById("flights").innerHTML = flights.map((f,i)=>`
+    <article class="flight ${sel.i===i?"sel":""}">
+      <div class="tt">
+        <div><div class="t">${f.d}</div><div class="a">BHI</div></div>
+        <div class="line"><i>1 h 10 min</i></div>
+        <div style="text-align:right"><div class="t">${f.a}</div><div class="a">AEP</div></div>
+      </div>
+      <div class="info"><span><b>${f.c}</b> · ${f.eq}</span><span>${f.pt} puntual</span><span>Directo</span></div>
+      <div class="fares">${fares.map((r,k)=>`
+        <button type="button" class="fare" data-i="${i}" data-k="${k}" aria-pressed="${sel.i===i&&sel.k===k}">
+          <span class="n">${r.n}</span><span class="d">${r.d}</span>
+          <span class="p">${money(f.f[k])} <small>c/u</small></span>
+        </button>`).join("")}</div>
+    </article>`).join("");
+  const f = flights[sel.i], tot = f.f[sel.k]*PAX;
+  document.getElementById("sumTxt").textContent = `${f.c} · ${fares[sel.k].n} · ${PAX} pasajeros`;
+  document.getElementById("sumTot").textContent = money(tot);
+}
+
+document.getElementById("flights").addEventListener("click",e=>{
+  const b = e.target.closest(".fare"); if(!b) return;
+  sel = {i:+b.dataset.i,k:+b.dataset.k}; renderFlights();
+});
+renderDays(); renderFlights();
+</script>
+</body>
+</html>
