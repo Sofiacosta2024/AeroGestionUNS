@@ -1,4 +1,5 @@
 import type { Config } from 'tailwindcss';
+import forms from '@tailwindcss/forms';
 
 /**
  * Tema unificado de AeroGestion UNS.
@@ -185,7 +186,7 @@ const config: Config = {
   },
   // Necesario para reproducir el render original de los <input> del login
   // (el HTML original lo cargaba via `tailwind.config?plugins=forms`).
-  plugins: [require('@tailwindcss/forms')],
+  plugins: [forms],
 };
 
 export default config;
