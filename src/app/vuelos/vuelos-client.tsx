@@ -4,10 +4,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatDayMonth, formatDuration, formatFullDate, formatTime, formatWeekday } from '@/lib/format';
 import { localWeekDays } from '@/lib/dates';
-import type { FlightCardData, VuelosBootstrap, WeeklyFareDay } from '@/lib/view-models';
+import type {
+  FlightCardData,
+  FlightPagination,
+  VuelosBootstrap,
+  WeeklyFareDay,
+} from '@/lib/view-models';
 import type { SerializedPrice } from '@/lib/flights';
 
 const TZ = 'America/Argentina/Buenos_Aires';
+const FLIGHT_PAGE_SIZE = 20;
 
 const LOGO =
   'https://lh3.googleusercontent.com/aida/AEtjO1WzlGJoL35vKD15_zsEm0QpUS0h7KCefzqRe5cyp23ElT3GGjCACZeQ4t_3qJY9hWqBFnWlvEca6TE1SW679EK3rOQ2jP8-FtFtHY8VyEq7gBqBU6Sy1tPH84zC3Tlraa3L1Uyy05Apuxx3IHdwJ5sybaGbgelqRe7imj4PrP4R-xUngvTQthhwAwcaOz6gEYFkkl5KEk_0NjoF0tDBcgYhNb9NXngvhp8JBvDigmxySHyWSWcFWH1Bj50';
@@ -73,6 +79,7 @@ export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap
   const [passengers, setPassengers] = useState(bootstrap.initialQuery.passengers);
 
   const [flights, setFlights] = useState<FlightCardData[]>(bootstrap.initialFlights);
+  const [pagination, setPagination] = useState<FlightPagination>(bootstrap.initialPagination);
   const [weeklyFares, setWeeklyFares] = useState<WeeklyFareDay[]>(bootstrap.initialWeeklyFares);
   const [selection, setSelection] = useState<Selection | null>(() => {
     const f = bootstrap.initialFlights[0];
@@ -124,7 +131,7 @@ export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap
     null;
   const total = selectedPrice ? selectedPrice.price * passengers : 0;
 
-  async function runSearch() {
+  async function runSearch(page = 1, refreshWeeklyFares = true) {
     setLoading(true);
     setError(null);
     try {
@@ -132,9 +139,10 @@ export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap
         origin,
         destination,
         date,
+        page: String(page),
+        pageSize: String(FLIGHT_PAGE_SIZE),
         sort: 'departure',
         order: 'asc',
-        pageSize: '50',
       });
       const fareQuery = new URLSearchParams({
         origin,
@@ -145,25 +153,32 @@ export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap
 
       const [flightRes, fareRes] = await Promise.all([
         fetch(`/api/flights?${flightQuery.toString()}`),
-        fetch(`/api/weekly-fares?${fareQuery.toString()}`),
+        refreshWeeklyFares
+          ? fetch(`/api/weekly-fares?${fareQuery.toString()}`)
+          : Promise.resolve(null),
       ]);
 
-      const [flightData, fareData] = await Promise.all([
-        readJson<{ data: ApiFlight[] }>(flightRes),
-        readJson<{ data: ApiWeeklyFare[] }>(fareRes),
-      ]);
+      const flightData = await readJson<{
+        data: ApiFlight[];
+        pagination: FlightPagination;
+      }>(flightRes);
 
       const nextFlights: FlightCardData[] = flightData.data;
       setFlights(nextFlights);
-      setWeeklyFares(
-        fareData.data.map((w) => ({
-          id: w.id,
-          date: w.date,
-          price: w.price,
-          demandLevel: w.demandLevel,
-          currency: w.currency,
-        })),
-      );
+      setPagination(flightData.pagination);
+
+      if (fareRes) {
+        const fareData = await readJson<{ data: ApiWeeklyFare[] }>(fareRes);
+        setWeeklyFares(
+          fareData.data.map((w) => ({
+            id: w.id,
+            date: w.date,
+            price: w.price,
+            demandLevel: w.demandLevel,
+            currency: w.currency,
+          })),
+        );
+      }
 
       const first = nextFlights[0];
       const firstFare = first?.prices[0];
@@ -569,7 +584,7 @@ export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap
                 <button
                   className="w-full sm:w-auto px-space-lg py-3 rounded-lg bg-secondary-container text-on-secondary font-label-lg text-label-lg hover:bg-secondary transition-all shadow-md flex items-center justify-center gap-space-sm group disabled:opacity-70 disabled:cursor-not-allowed"
                   disabled={loading}
-                  onClick={runSearch}
+                  onClick={() => runSearch()}
                   type="button"
                 >
                   <span className="material-symbols-outlined group-hover:rotate-12 transition-transform">
@@ -669,8 +684,8 @@ export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap
                   >
                     {error
                       ? error
-                      : `${flights.length} servicios comerciales ${
-                          flights.length === 1 ? 'directo' : 'directos'
+                        : `${pagination.total} servicios comerciales ${
+                          pagination.total === 1 ? 'directo' : 'directos'
                         } para el día ${formatFullDate(date)}`}
                   </p>
                 </div>
@@ -703,6 +718,33 @@ export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap
                     selection={selection}
                   />
                 ))
+              )}
+
+              {pagination.pages > 1 && (
+                <nav
+                  aria-label="Paginación de vuelos"
+                  className="flex flex-wrap items-center justify-center gap-space-md"
+                >
+                  <button
+                    className="px-space-md py-space-sm rounded-lg bg-surface-container-lowest text-primary font-label-md text-label-md shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={loading || pagination.page <= 1}
+                    onClick={() => runSearch(pagination.page - 1, false)}
+                    type="button"
+                  >
+                    Anterior
+                  </button>
+                  <span aria-live="polite" className="font-label-md text-label-md text-on-surface-variant">
+                    Página {pagination.page} de {pagination.pages} · {pagination.total} vuelos
+                  </span>
+                  <button
+                    className="px-space-md py-space-sm rounded-lg bg-surface-container-lowest text-primary font-label-md text-label-md shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={loading || pagination.page >= pagination.pages}
+                    onClick={() => runSearch(pagination.page + 1, false)}
+                    type="button"
+                  >
+                    Siguiente
+                  </button>
+                </nav>
               )}
             </section>
 

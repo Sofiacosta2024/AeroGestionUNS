@@ -15,6 +15,7 @@ export const dynamic = 'force-dynamic';
 const DEFAULT_DATE = '2025-11-18';
 const DEFAULT_RETURN_DATE = '2025-11-24';
 const DEFAULT_PASSENGERS = 2;
+const FLIGHT_PAGE_SIZE = 20;
 
 const ROLE_LABEL: Record<string, string> = {
   PASAJERO: 'Pasajero',
@@ -52,18 +53,24 @@ export default async function VuelosPage() {
   // Carga inicial directa desde Prisma (sin HTTP loopback). Las busquedas que
   // lanza el usuario si van contra /api/flights y /api/weekly-fares.
   const range = toUtcRange(DEFAULT_DATE);
-  const flights = route
-    ? await prisma.flight.findMany({
-        where: {
-          routeId: route.id,
-          status: { not: 'CANCELLED' },
-          departureAt: { gte: range.gte, lt: range.lt },
-        },
-        include: flightInclude,
-        orderBy: { departureAt: 'asc' },
-        take: 50,
-      })
-    : [];
+  const initialFlightWhere = route
+    ? {
+        routeId: route.id,
+        status: { not: 'CANCELLED' as const },
+        departureAt: { gte: range.gte, lt: range.lt },
+      }
+    : null;
+  const [flights, totalFlights] = await Promise.all([
+    initialFlightWhere
+      ? prisma.flight.findMany({
+          where: initialFlightWhere,
+          include: flightInclude,
+          orderBy: { departureAt: 'asc' },
+          take: FLIGHT_PAGE_SIZE,
+        })
+      : Promise.resolve([]),
+    initialFlightWhere ? prisma.flight.count({ where: initialFlightWhere }) : Promise.resolve(0),
+  ]);
 
   // Calendario: domingo a sabado de la semana de la fecha de salida. WeeklyFare
   // es una columna @db.Date (sin hora), asi que se compara por dia y no por
@@ -95,6 +102,12 @@ export default async function VuelosPage() {
       routeId: route?.id ?? null,
     },
     initialFlights: flights.map(toFlightCard),
+    initialPagination: {
+      page: 1,
+      pageSize: FLIGHT_PAGE_SIZE,
+      total: totalFlights,
+      pages: Math.ceil(totalFlights / FLIGHT_PAGE_SIZE),
+    },
     initialWeeklyFares: weeklyFares.map((w) => ({
       id: w.id,
       date: w.date.toISOString().slice(0, 10),

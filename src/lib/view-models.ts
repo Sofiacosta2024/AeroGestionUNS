@@ -64,6 +64,13 @@ export type WeeklyFareDay = {
   currency: string;
 };
 
+export type FlightPagination = {
+  page: number;
+  pageSize: number;
+  total: number;
+  pages: number;
+};
+
 export type VuelosBootstrap = {
   airports: AirportOption[];
   routes: RouteOption[];
@@ -76,6 +83,7 @@ export type VuelosBootstrap = {
     routeId: string | null;
   };
   initialFlights: FlightCardData[];
+  initialPagination: FlightPagination;
   initialWeeklyFares: WeeklyFareDay[];
   user: { name: string; email: string; role: string } | null;
 };
