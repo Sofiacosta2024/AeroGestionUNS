@@ -148,7 +148,8 @@ const routeBase = z.object({
   originAirportId: iataCode,
   destinationAirportId: iataCode,
   distanceKm: z.coerce.number().int().min(1).max(20_000).optional().nullable(),
-  durationMinutes: z.coerce.number().int().min(1).max(1500).optional().nullable(),
+  // Obligatoria: la llegada de cada vuelo se calcula con ella (RF-01).
+  durationMinutes: z.coerce.number().int().min(1).max(1500),
   isActive: z.coerce.boolean().default(true),
 });
 
