@@ -1,7 +1,8 @@
 import { UserRole } from '@prisma/client';
+import { clerkClient } from '@clerk/nextjs/server';
 import { ApiError, handler, noContent, ok, parseBody } from '@/lib/api';
 import { audit } from '@/lib/audit';
-import { hashPassword, requireRole, requireUser } from '@/lib/auth';
+import { requireRole, requireUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { updateUserSchema } from '@/lib/validation';
 
@@ -54,14 +55,30 @@ export const PATCH = handler(async (req: Request, ctx: Ctx) => {
     throw ApiError.forbidden('No puede modificar su propio rol ni estado');
   }
 
+   const target = await prisma.user.findUnique({ where: { id }, select: { clerkId: true } });
+  if (!target) throw ApiError.notFound('Usuario no encontrado');
+
   const { password, ...rest } = body;
+  const needsClerk = password || rest.role !== undefined || rest.isActive !== undefined;
+  if (needsClerk && !target.clerkId) {
+    throw ApiError.badRequest('El usuario todavia no inicio sesion con Clerk');
+  }
+
+  if (target.clerkId && needsClerk) {
+    const client = await clerkClient();
+    if (password) await client.users.updateUser(target.clerkId, { password });
+    if (rest.role !== undefined) {
+      await client.users.updateUserMetadata(target.clerkId, {
+        publicMetadata: { role: rest.role },
+      });
+    }
+    if (rest.isActive === false) await client.users.banUser(target.clerkId);
+    if (rest.isActive === true) await client.users.unbanUser(target.clerkId);
+  }
 
   const user = await prisma.user.update({
     where: { id },
-    data: {
-      ...rest,
-      ...(password ? { passwordHash: await hashPassword(password) } : {}),
-    },
+    data: rest,
     select: { id: true, email: true, role: true, legajo: true, firstName: true, lastName: true, isActive: true },
   });
 
@@ -70,7 +87,7 @@ export const PATCH = handler(async (req: Request, ctx: Ctx) => {
     action: 'UPDATE',
     entity: 'User',
     entityId: id,
-    metadata: { fields: Object.keys(rest) },
+    metadata: { fields: Object.keys(rest), passwordChanged: Boolean(password) },
   });
 
   return ok(user);
@@ -83,8 +100,14 @@ export const DELETE = handler(async (_req: Request, ctx: Ctx) => {
 
   if (admin.id === id) throw ApiError.badRequest('No puede eliminar su propio usuario');
 
+  const target = await prisma.user.findUnique({ where: { id }, select: { clerkId: true } });
+  if (!target) throw ApiError.notFound('Usuario no encontrado');
+
   await prisma.user.update({ where: { id }, data: { isActive: false } });
-  await prisma.session.deleteMany({ where: { userId: id } });
+  if (target.clerkId) {
+    const client = await clerkClient();
+    await client.users.banUser(target.clerkId);
+  }
 
   await audit({ userId: admin.id, action: 'DEACTIVATE', entity: 'User', entityId: id });
   return noContent();

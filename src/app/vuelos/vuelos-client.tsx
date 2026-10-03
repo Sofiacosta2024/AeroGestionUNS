@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useClerk } from '@clerk/nextjs';
 import { formatDayMonth, formatDuration, formatFullDate, formatTime, formatWeekday } from '@/lib/format';
 import { localWeekDays } from '@/lib/dates';
 import type {
@@ -70,7 +71,7 @@ const cheapestIndex = (prices: SerializedPrice[]) =>
 
 export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap }) {
   const router = useRouter();
-
+  const { signOut } = useClerk();
   const [tripType, setTripType] = useState<'ROUND_TRIP' | 'ONE_WAY'>('ROUND_TRIP');
   const [origin, setOrigin] = useState(bootstrap.initialQuery.origin);
   const [destination, setDestination] = useState(bootstrap.initialQuery.destination);
@@ -191,8 +192,8 @@ export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap
   }
 
   async function logout() {
-    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
-    router.replace('/login');
+     await signOut({ redirectUrl: '/login' });
+
     router.refresh();
   }
 

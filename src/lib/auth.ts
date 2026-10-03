@@ -1,89 +1,70 @@
-import { createHash, randomBytes } from 'node:crypto';
-import { cookies, headers } from 'next/headers';
-import bcrypt from 'bcryptjs';
+import { auth, currentUser } from '@clerk/nextjs/server';
 import { UserRole, type User } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { ApiError } from '@/lib/api';
 
-export const SESSION_COOKIE = 'ag_session';
-const SHORT_SESSION_DAYS = 1; // sin "recordar sesion"
-const LONG_SESSION_DAYS = 30; // con "recordar sesion"
-
 export type AuthUser = Pick<User, 'id' | 'email' | 'role' | 'firstName' | 'lastName' | 'legajo'>;
 
-export async function hashPassword(plain: string): Promise<string> {
-  return bcrypt.hash(plain, 12);
-}
-
-export async function verifyPassword(plain: string, hash: string): Promise<boolean> {
-  return bcrypt.compare(plain, hash);
-}
-
-/**
- * El token se genera en claro, se envia al cliente dentro de una cookie HttpOnly
- * y en la base solo se guarda su SHA-256: si alguien lee la tabla `sessions`
- * no puede suplantar a un usuario.
- */
-function hashToken(token: string): string {
-  return createHash('sha256').update(token).digest('hex');
-}
-
-export async function createSession(userId: string, remember: boolean): Promise<void> {
-  const token = randomBytes(32).toString('hex');
-  const days = remember ? LONG_SESSION_DAYS : SHORT_SESSION_DAYS;
-  const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-
-  const hdrs = await headers();
-
-  await prisma.session.create({
-    data: {
-      userId,
-      tokenHash: hashToken(token),
-      expiresAt,
-      ipAddress: clientIp(hdrs),
-      userAgent: hdrs.get('user-agent')?.slice(0, 256) ?? null,
-    },
-  });
-
-  const store = await cookies();
-  store.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    path: '/',
-    expires: expiresAt,
-  });
-}
-
-export async function destroySession(): Promise<void> {
-  const store = await cookies();
-  const token = store.get(SESSION_COOKIE)?.value;
-  if (token) {
-    await prisma.session.deleteMany({ where: { tokenHash: hashToken(token) } });
-  }
-  store.delete(SESSION_COOKIE);
-}
-
-/** Devuelve el usuario de la sesion actual, o null. */
-export async function getCurrentUser(): Promise<AuthUser | null> {
-  const store = await cookies();
-  const token = store.get(SESSION_COOKIE)?.value;
-  if (!token) return null;
-
-  const session = await prisma.session.findUnique({
-    where: { tokenHash: hashToken(token) },
-    include: { user: true },
-  });
-
-  if (!session) return null;
-  if (session.expiresAt.getTime() < Date.now()) {
-    await prisma.session.delete({ where: { id: session.id } }).catch(() => undefined);
-    return null;
-  }
-  if (!session.user.isActive) return null;
-
-  const { id, email, role, firstName, lastName, legajo } = session.user;
+function toAuthUser(u: User): AuthUser {
+  const { id, email, role, firstName, lastName, legajo } = u;
   return { id, email, role, firstName, lastName, legajo };
+}
+
+function parseRole(value: unknown): UserRole {
+  return value === 'ADMIN' || value === 'MOSTRADOR' ? (value as UserRole) : UserRole.PASAJERO;
+}
+
+/** Usuario actual (Clerk como fuente de identidad y rol, Prisma como perfil), o null. */
+export async function getCurrentUser(): Promise<AuthUser | null> {
+  const { userId, sessionClaims } = await auth();
+  if (!userId) return null;
+
+  const role = parseRole(sessionClaims?.metadata?.role);
+
+  const existing = await prisma.user.findUnique({ where: { clerkId: userId } });
+  if (existing) {
+    if (!existing.isActive) return null;
+    if (existing.role !== role) {
+      const updated = await prisma.user.update({ where: { id: existing.id }, data: { role } });
+      return toAuthUser(updated);
+    }
+    return toAuthUser(existing);
+  }
+
+  // Primer ingreso: sincronizacion perezosa con Clerk
+  const cu = await currentUser();
+  const primary = cu?.primaryEmailAddress;
+  if (!cu || !primary || primary.verification?.status !== 'verified') return null;
+  const email = primary.emailAddress.toLowerCase();
+
+  // Si ya existia un usuario con ese mail (ej. cargado por el seed), se vincula
+  const byEmail = await prisma.user.findUnique({ where: { email } });
+  if (byEmail && !byEmail.clerkId) {
+    const linked = await prisma.user.update({
+      where: { id: byEmail.id },
+      data: { clerkId: userId, role },
+    });
+    return linked.isActive ? toAuthUser(linked) : null;
+  }
+
+  try {
+    const fallbackName = email.split('@')[0] ?? 'Usuario';
+
+        const created = await prisma.user.create({
+          data: {
+            clerkId: userId,
+            email,
+            role,
+            firstName: cu.firstName?.slice(0, 80) || fallbackName,
+            lastName: cu.lastName?.slice(0, 80) || '-',
+          },
+        });
+    return toAuthUser(created);
+  } catch {
+    // Dos requests simultaneas en el primer ingreso: el otro ya lo creo
+    const again = await prisma.user.findUnique({ where: { clerkId: userId } });
+    return again?.isActive ? toAuthUser(again) : null;
+  }
 }
 
 export async function requireUser(): Promise<AuthUser> {
@@ -113,10 +94,4 @@ export function canManage(user: AuthUser | null): boolean {
 
 export function isAdmin(user: AuthUser | null): boolean {
   return user?.role === UserRole.ADMIN;
-}
-
-function clientIp(hdrs: Headers): string | null {
-  const fwd = hdrs.get('x-forwarded-for');
-  const ip = fwd?.split(',')[0]?.trim() ?? hdrs.get('x-real-ip');
-  return ip ? ip.slice(0, 64) : null;
 }

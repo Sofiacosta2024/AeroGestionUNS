@@ -1,7 +1,9 @@
 import { UserRole } from '@prisma/client';
-import { created, handler, ok, parseBody, parseQuery } from '@/lib/api';
+import { clerkClient } from '@clerk/nextjs/server';
+import { isClerkAPIResponseError } from '@clerk/nextjs/errors';
+import { ApiError, created, handler, ok, parseBody, parseQuery } from '@/lib/api';
 import { audit } from '@/lib/audit';
-import { hashPassword, requireRole } from '@/lib/auth';
+import { requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { paginationQuery, userBase } from '@/lib/validation';
 import { z } from 'zod';
@@ -74,23 +76,43 @@ export const GET = handler(async (req: Request) => {
 /** POST /api/users — alta de personal (mostrador/admin). */
 export const POST = handler(async (req: Request) => {
   const admin = await requireRole(UserRole.ADMIN);
-  const body = await parseBody(req, createUserSchema);
+  const { password, ...rest } = await parseBody(req, createUserSchema);
 
-  const { password, ...rest } = body;
-  const passwordHash = await hashPassword(password);
+  const client = await clerkClient();
+  let clerkUser;
+  try {
+    clerkUser = await client.users.createUser({
+      emailAddress: [rest.email],
+      password,
+      firstName: rest.firstName,
+      lastName: rest.lastName,
+      publicMetadata: { role: rest.role },
+    });
+  } catch (err) {
+    if (isClerkAPIResponseError(err)) {
+      throw ApiError.badRequest(err.errors[0]?.longMessage ?? 'Clerk rechazo el alta');
+    }
+    throw err;
+  }
 
-  const user = await prisma.user.create({
-    data: { ...rest, passwordHash },
-    select: { id: true, email: true, role: true, legajo: true, firstName: true, lastName: true },
-  });
+  try {
+    const user = await prisma.user.create({
+      data: { ...rest, clerkId: clerkUser.id },
+      select: { id: true, email: true, role: true, legajo: true, firstName: true, lastName: true },
+    });
 
-  await audit({
-    userId: admin.id,
-    action: 'CREATE',
-    entity: 'User',
-    entityId: user.id,
-    metadata: { role: user.role },
-  });
+    await audit({
+      userId: admin.id,
+      action: 'CREATE',
+      entity: 'User',
+      entityId: user.id,
+      metadata: { role: user.role },
+    });
 
-  return created(user);
+    return created(user);
+  } catch (err) {
+    // Evita dejar una cuenta huerfana en Clerk si falla la base
+    await client.users.deleteUser(clerkUser.id).catch(() => undefined);
+    throw err;
+  }
 });

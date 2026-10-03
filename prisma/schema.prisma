@@ -7,8 +7,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ---------------------------------------------------------------------------
@@ -126,8 +127,9 @@ enum BoardingPassStatus {
 
 model User {
   id           String    @id @default(cuid())
+  clerkId String? @unique
   email        String    @unique
-  passwordHash String    @map("password_hash")
+  passwordHash String?    @map("password_hash")
   role         UserRole  @default(PASAJERO)
   /// Legajo / identificador operativo del personal (UNS)
   legajo       String?   @unique
