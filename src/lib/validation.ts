@@ -207,7 +207,11 @@ export const flightFareSchema = z.object({
 const calendarDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha invalida (formato YYYY-MM-DD)')
-  .refine((v) => new Date(`${v}T00:00:00Z`).toISOString().startsWith(v), 'Fecha inexistente');
+  // Zod corre este refine aunque falle el regex: hay que tolerar textos que no son fechas.
+  .refine((v) => {
+    const parsed = new Date(`${v}T00:00:00Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(v);
+  }, 'Fecha inexistente');
 
 const timeOfDay = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Hora invalida (formato HH:MM)');
 

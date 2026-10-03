@@ -21,6 +21,11 @@ export function weekdayOf(date: string): Weekday {
   return calendarDay(date).getUTCDay() as Weekday;
 }
 
+/** `yyyy-mm-dd` corrido `days` dias de calendario (negativo para ir hacia atras). */
+export function shiftDate(date: string, days: number): string {
+  return new Date(calendarDay(date).getTime() + days * DAY_MS).toISOString().slice(0, 10);
+}
+
 /** Cantidad de dias entre `from` y `to`, ambos inclusive. */
 export function daysInclusive(from: string, to: string): number {
   return Math.round((calendarDay(to).getTime() - calendarDay(from).getTime()) / DAY_MS) + 1;

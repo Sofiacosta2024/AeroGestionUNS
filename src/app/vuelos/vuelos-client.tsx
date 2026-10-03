@@ -49,8 +49,13 @@ const STEPS: { n: number; label: string; icon?: string; state: 'active' | 'upcom
 const PENDING_SECTIONS: { path: string; label: string; short: string }[] = [
   { path: 'mis-reservas', label: 'Mis Reservas', short: 'Reservas' },
   { path: 'check-in-online', label: 'Check-in Online', short: 'Check-in' },
-  { path: 'alta-de-vuelos-admin', label: 'Alta de Vuelos [Admin]', short: 'Admin' },
 ];
+
+/**
+ * Cambio RF-01: "Alta de Vuelos [Admin]" ya no esta en construccion. Lleva al panel de
+ * alta y publicacion y solo se muestra a administradores.
+ */
+const ADMIN_SECTION = { href: '/admin/vuelos/nuevo', label: 'Alta de Vuelos [Admin]', short: 'Admin' };
 
 type Selection = { flightId: string; fareId: string };
 
@@ -259,6 +264,14 @@ export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap
                 {s.label}
               </button>
             ))}
+            {bootstrap.user?.isAdmin && (
+              <a
+                className="px-space-md py-space-sm rounded-lg font-label-lg text-label-lg text-primary-fixed-dim hover:bg-primary hover:text-on-primary transition-colors"
+                href={ADMIN_SECTION.href}
+              >
+                {ADMIN_SECTION.label}
+              </a>
+            )}
           </nav>
 
           <div className="flex items-center gap-space-sm sm:gap-space-md shrink-0">
@@ -342,6 +355,14 @@ export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap
                 {s.short}
               </button>
             ))}
+            {bootstrap.user?.isAdmin && (
+              <a
+                className="shrink-0 px-3 py-1.5 rounded-lg font-label-md text-label-md text-primary-fixed-dim bg-primary/60"
+                href={ADMIN_SECTION.href}
+              >
+                {ADMIN_SECTION.short}
+              </a>
+            )}
           </nav>
         </div>
       </header>

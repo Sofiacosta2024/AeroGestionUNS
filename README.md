@@ -35,6 +35,8 @@ La aplicación queda en `http://localhost:3000`:
 
 - `/login` — portal de autenticación (diseño de `login.html`).
 - `/vuelos` — motor de búsqueda de vuelos (diseño de `vuelos.html`).
+- `/admin/vuelos/nuevo` — alta y publicación de vuelos (RF-01, solo `ADMIN`).
+- `/admin/itinerario` — planilla del día y borradores pendientes (RF-01, solo `ADMIN`).
 - `/` — redirige a `/vuelos` si hay sesión, a `/login` si no.
 
 ### Variables de entorno

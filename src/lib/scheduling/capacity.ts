@@ -36,7 +36,7 @@ export type CabinUsage = {
   assigned: number;
 };
 
-const CABIN_LABEL: Record<CabinClass, string> = {
+export const CABIN_LABEL: Record<CabinClass, string> = {
   ECONOMY: 'Economy',
   PREMIUM: 'Premium',
   BUSINESS: 'Business',
