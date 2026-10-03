@@ -32,6 +32,26 @@ const size = (
   return [fontSize, cfg];
 };
 
+const SANS_STACK = [
+  'Plus Jakarta Sans',
+  'system-ui',
+  '-apple-system',
+  'BlinkMacSystemFont',
+  '"Segoe UI"',
+  'Roboto',
+  'sans-serif',
+];
+
+const MONO_STACK = [
+  'Space Grotesk',
+  'ui-monospace',
+  'SFMono-Regular',
+  'Menlo',
+  'Monaco',
+  'Consolas',
+  'monospace',
+];
+
 const theme = {
   colors: {
     background: varColor('background', '#f8fafc'),
@@ -82,22 +102,22 @@ const theme = {
     'tertiary-fixed-dim': '#93ccff',
   },
   fontFamily: {
-    'body-lg': ['Plus Jakarta Sans'],
-    'body-md': ['Plus Jakarta Sans'],
-    'body-sm': ['Plus Jakarta Sans'],
-    'code-flight': ['Plus Jakarta Sans'],
-    'code-telemetry': ['Space Grotesk'],
-    'display-lg': ['Plus Jakarta Sans'],
-    'display-lg-mobile': ['Plus Jakarta Sans'],
-    'headline-lg': ['Plus Jakarta Sans'],
-    'headline-lg-mobile': ['Plus Jakarta Sans'],
-    'headline-md': ['Plus Jakarta Sans'],
-    'headline-sm': ['Plus Jakarta Sans'],
-    'headline-xl': ['Plus Jakarta Sans'],
-    'headline-xl-mobile': ['Plus Jakarta Sans'],
-    'label-lg': ['Plus Jakarta Sans'],
-    'label-md': ['Plus Jakarta Sans'],
-    'label-sm': ['Plus Jakarta Sans'],
+    'body-lg': SANS_STACK,
+    'body-md': SANS_STACK,
+    'body-sm': SANS_STACK,
+    'code-flight': SANS_STACK,
+    'code-telemetry': MONO_STACK,
+    'display-lg': SANS_STACK,
+    'display-lg-mobile': SANS_STACK,
+    'headline-lg': SANS_STACK,
+    'headline-lg-mobile': SANS_STACK,
+    'headline-md': SANS_STACK,
+    'headline-sm': SANS_STACK,
+    'headline-xl': SANS_STACK,
+    'headline-xl-mobile': SANS_STACK,
+    'label-lg': SANS_STACK,
+    'label-md': SANS_STACK,
+    'label-sm': SANS_STACK,
   },
   fontSize: {
     // --- tokens identicos en ambas paginas ---

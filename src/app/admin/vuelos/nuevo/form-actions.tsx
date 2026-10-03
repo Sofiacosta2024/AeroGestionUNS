@@ -28,30 +28,31 @@ export function ActionBar(props: ActionBarProps) {
           </p>
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-space-sm w-full lg:w-auto justify-end shrink-0">
+      <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto justify-end shrink-0">
         <Link
-          className="px-space-lg py-3 rounded-lg bg-surface-container text-on-surface hover:bg-surface-container-high font-label-lg text-label-lg"
+          className="px-4 py-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-sm shadow-sm transition-all flex items-center gap-1.5"
           href="/admin/itinerario"
         >
-          Cancelar y volver
+          <span className="material-symbols-outlined text-[18px]">arrow_back</span>
+          <span>Cancelar y volver</span>
         </Link>
         <button
-          className="flex items-center gap-space-xs px-space-md py-3 rounded-lg bg-surface-container-high text-primary hover:bg-surface-container-highest font-label-lg text-label-lg disabled:opacity-50"
+          className="flex items-center gap-2 px-5 py-3 rounded-xl bg-[#1F0A43] hover:bg-[#2B0E5D] text-white font-bold text-sm shadow-md shadow-[#1F0A43]/20 hover:shadow-lg transition-all active:scale-[0.99] disabled:opacity-40 disabled:cursor-not-allowed"
           disabled={!canSubmit || submitting !== null}
           onClick={onSaveDraft}
           type="button"
         >
-          <span className="material-symbols-outlined text-[20px]">bookmark</span>
-          {submitting === 'draft' ? 'Guardando…' : isDraft ? 'Guardar cambios del borrador' : 'Guardar borrador'}
+          <span className="material-symbols-outlined text-[19px] text-pink-300">bookmark</span>
+          <span>{submitting === 'draft' ? 'Guardando…' : isDraft ? 'Guardar cambios del borrador' : 'Guardar borrador'}</span>
         </button>
         <button
-          className="flex items-center gap-space-xs px-space-xl py-3.5 rounded-lg bg-secondary-container text-on-secondary hover:bg-secondary font-label-lg text-label-lg shadow-md disabled:opacity-50"
+          className="flex items-center gap-2 px-6 py-3.5 rounded-xl bg-[#E11D48] hover:bg-[#BE123C] text-white font-bold text-sm shadow-lg shadow-rose-900/30 hover:shadow-rose-900/45 transition-all active:scale-[0.99] disabled:opacity-40 disabled:cursor-not-allowed"
           disabled={!canSubmit || submitting !== null}
           onClick={onPublish}
           type="button"
         >
-          <span className="material-symbols-outlined text-[20px]">send_time_extension</span>
-          {submitting === 'publish' ? 'Publicando…' : 'Publicar vuelo'}
+          <span className="material-symbols-outlined text-[20px]">rocket_launch</span>
+          <span>{submitting === 'publish' ? 'Publicando…' : 'Publicar vuelo'}</span>
         </button>
       </div>
     </div>

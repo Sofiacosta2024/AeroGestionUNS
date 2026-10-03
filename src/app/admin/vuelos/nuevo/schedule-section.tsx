@@ -29,10 +29,10 @@ const WEEK = [
 ];
 
 const INPUT =
-  'w-full bg-surface-container-lowest px-space-md py-2 rounded-lg font-code-telemetry text-code-telemetry text-primary border-0 shadow-sm focus:ring-2 focus:ring-secondary/30';
+  'w-full bg-white px-3.5 py-2.5 rounded-xl font-medium text-slate-800 border border-slate-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E11D48]/20 focus:border-[#E11D48] transition-all text-sm';
 const SELECT =
-  'w-full bg-surface-container-low px-space-md py-3 rounded-lg font-headline-sm text-headline-sm text-primary border-0 focus:ring-2 focus:ring-secondary/30';
-const SMALL_LABEL = 'font-label-sm text-label-sm uppercase text-on-surface-variant';
+  'w-full bg-white px-3.5 py-3 rounded-xl font-bold text-slate-800 border border-slate-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E11D48]/20 focus:border-[#E11D48] transition-all text-sm cursor-pointer';
+const SMALL_LABEL = 'font-label-sm text-[11px] font-bold uppercase tracking-wider text-slate-500';
 
 /** Card 1 del diseno: ruta, avion, fechas, hora y dias de operacion. */
 export default function ScheduleSection(props: Props) {
@@ -52,8 +52,8 @@ export default function ScheduleSection(props: Props) {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-space-md">
         <label className="flex flex-col gap-space-xs font-label-md text-label-md text-on-surface">
-          <span className="flex items-center gap-1">
-            <span className="material-symbols-outlined text-[16px] text-secondary">flight_takeoff</span>
+          <span className="flex items-center gap-1.5 font-bold text-slate-700">
+            <span className="material-symbols-outlined text-[17px] text-[#E11D48]">flight_takeoff</span>
             Aeropuerto de origen
           </span>
           <select className={SELECT} value={form.origin} onChange={(e) => onChange({ origin: e.target.value })}>
@@ -66,8 +66,8 @@ export default function ScheduleSection(props: Props) {
         </label>
 
         <label className="flex flex-col gap-space-xs font-label-md text-label-md text-on-surface">
-          <span className="flex items-center gap-1">
-            <span className="material-symbols-outlined text-[16px] text-secondary">flight_land</span>
+          <span className="flex items-center gap-1.5 font-bold text-slate-700">
+            <span className="material-symbols-outlined text-[17px] text-blue-600">flight_land</span>
             Aeropuerto de destino
           </span>
           <select className={SELECT} value={form.destination} onChange={(e) => onChange({ destination: e.target.value })}>
@@ -83,8 +83,8 @@ export default function ScheduleSection(props: Props) {
         </label>
 
         <label className="flex flex-col gap-space-xs font-label-md text-label-md text-on-surface">
-          <span className="flex items-center gap-1">
-            <span className="material-symbols-outlined text-[16px] text-secondary">airlines</span>
+          <span className="flex items-center gap-1.5 font-bold text-slate-700">
+            <span className="material-symbols-outlined text-[17px] text-purple-700">airlines</span>
             Aeronave
           </span>
           <select className={SELECT} value={form.aircraftId} onChange={(e) => onChange({ aircraftId: e.target.value })}>
@@ -102,24 +102,30 @@ export default function ScheduleSection(props: Props) {
         <NewRouteForm destination={form.destination} onCreated={onRouteCreated} origin={form.origin} />
       )}
 
-      <div className="flex items-center gap-space-xs bg-surface-container p-space-xs rounded-lg w-fit" role="radiogroup">
+      {/* Selector de modo resaltado como segmented control */}
+      <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl border border-slate-200/80 w-fit shadow-inner" role="radiogroup">
         {(['single', 'recurring'] as ScheduleMode[]).map((mode) => (
           <button
             key={mode}
             aria-checked={form.mode === mode}
-            className={`px-space-md py-space-sm rounded-lg font-label-lg text-label-lg transition-colors ${
-              form.mode === mode ? 'bg-primary-container text-on-primary' : 'text-primary hover:bg-surface-container-high'
+            className={`px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all duration-150 flex items-center gap-2 ${
+              form.mode === mode
+                ? 'bg-[#1F0A43] text-white shadow-md shadow-[#1F0A43]/25'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
             }`}
             onClick={() => onChange({ mode })}
             role="radio"
             type="button"
           >
-            {mode === 'single' ? 'Vuelo único' : 'Cronograma'}
+            <span className="material-symbols-outlined text-[17px]">
+              {mode === 'single' ? 'event' : 'date_range'}
+            </span>
+            <span>{mode === 'single' ? 'Vuelo único' : 'Cronograma'}</span>
           </button>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-space-md bg-surface-container-low p-space-md rounded-xl">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-space-md bg-slate-50 border border-slate-200/70 p-space-md rounded-2xl">
         {form.mode === 'single' ? (
           <label className="flex flex-col gap-space-xs">
             <span className={SMALL_LABEL}>Fecha del vuelo</span>
@@ -141,12 +147,26 @@ export default function ScheduleSection(props: Props) {
           <span className={SMALL_LABEL}>Salida programada (STD, hora ART)</span>
           <input className={INPUT} onChange={(e) => onChange({ departureTime: e.target.value })} type="time" value={form.departureTime} />
         </label>
+        
+        {/* Campo diferente / calculado: Arribo estimado */}
         <div className="flex flex-col gap-space-xs">
-          <span className={SMALL_LABEL}>Arribo estimado (STA)</span>
-          <span className={`${INPUT} flex items-center gap-space-xs bg-surface-container`} aria-live="polite">
-            {arrival ? `${arrival.time}${arrival.nextDay ? ' (+1 día)' : ''}` : '—'}
-            <span className="font-label-sm text-label-sm text-outline normal-case">calculado con la duración de la ruta</span>
+          <span className="font-label-sm text-[11px] font-bold uppercase tracking-wider text-indigo-900 flex items-center gap-1">
+            <span className="material-symbols-outlined text-[14px] text-indigo-600">auto_mode</span>
+            Arribo estimado (STA)
           </span>
+          <div className="w-full bg-indigo-50/70 border-2 border-dashed border-indigo-200 px-3.5 py-2 rounded-xl flex flex-col justify-center min-h-[42px] shadow-sm" aria-live="polite">
+            <div className="flex items-center gap-2">
+              <span className="text-sm sm:text-base font-extrabold text-indigo-950 font-mono">
+                {arrival ? arrival.time : '—'}
+              </span>
+              {arrival?.nextDay && (
+                <span className="bg-rose-100 border border-rose-200 text-[#E11D48] text-[10px] font-black px-1.5 py-0.5 rounded-md uppercase">
+                  +1 día
+                </span>
+              )}
+            </div>
+            <span className="text-[10px] text-indigo-600/80 font-medium">Calculado automáticamente</span>
+          </div>
         </div>
       </div>
 
@@ -155,7 +175,7 @@ export default function ScheduleSection(props: Props) {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-space-xs">
             <span className="font-label-md text-label-md text-on-surface font-bold">Frecuencia semanal de operación</span>
             <div className="flex items-center gap-space-xs font-label-sm text-label-sm">
-              <span className="text-on-surface-variant">Filtros rápidos:</span>
+              <span className="text-slate-500 font-semibold text-xs">Filtros rápidos:</span>
               <QuickFilter label="Todos" days={ALL_DAYS} current={form.weekdays} onSelect={(weekdays) => onChange({ weekdays })} />
               <QuickFilter label="Días hábiles" days={WORKDAYS} current={form.weekdays} onSelect={(weekdays) => onChange({ weekdays })} />
               <QuickFilter label="Fin de semana" days={WEEKEND} current={form.weekdays} onSelect={(weekdays) => onChange({ weekdays })} />
@@ -168,18 +188,20 @@ export default function ScheduleSection(props: Props) {
                 <button
                   key={d.value}
                   aria-pressed={active}
-                  className={`flex flex-col items-center justify-center p-space-sm rounded-lg transition-all ${
+                  className={`flex flex-col items-center justify-center p-3 rounded-2xl transition-all duration-150 ${
                     active
-                      ? 'bg-primary-container text-surface-container-lowest shadow-sm'
-                      : 'bg-surface-container-low text-outline opacity-60 hover:opacity-90'
+                      ? 'bg-[#1F0A43] text-white border-2 border-[#E11D48] shadow-md shadow-purple-950/25 scale-[1.02]'
+                      : 'bg-white border border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-700 shadow-sm'
                   }`}
                   onClick={() => toggleDay(d.value)}
                   type="button"
                 >
-                  <span className="font-label-sm text-label-sm uppercase tracking-wider opacity-80">{d.label}</span>
-                  <span className="font-headline-sm text-headline-sm font-bold mt-1">{d.letter}</span>
-                  <span className={`text-[10px] uppercase font-code-telemetry mt-1 ${active ? 'text-secondary-fixed' : ''}`}>
-                    {active ? 'Activo' : 'Inactivo'}
+                  <span className="text-[10px] uppercase font-bold tracking-wider opacity-80">{d.label}</span>
+                  <span className="text-base sm:text-lg font-black mt-0.5">{d.letter}</span>
+                  <span className={`text-[10px] font-bold mt-1 px-1.5 py-0.5 rounded-full ${
+                    active ? 'bg-[#E11D48] text-white' : 'bg-slate-100 text-slate-400'
+                  }`}>
+                    {active ? 'Activo' : 'Off'}
                   </span>
                 </button>
               );
@@ -201,8 +223,10 @@ function QuickFilter(props: { label: string; days: number[]; current: number[]; 
   const active = props.days.length === props.current.length && props.days.every((d) => props.current.includes(d));
   return (
     <button
-      className={`px-2.5 py-1 rounded font-semibold transition-colors ${
-        active ? 'bg-primary-container text-surface-container-lowest' : 'bg-surface-container hover:bg-surface-container-high text-primary'
+      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all shadow-sm ${
+        active
+          ? 'bg-[#1F0A43] text-white'
+          : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
       }`}
       onClick={() => props.onSelect([...props.days].sort((a, b) => a - b))}
       type="button"

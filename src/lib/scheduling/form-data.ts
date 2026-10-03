@@ -1,7 +1,7 @@
 import { AircraftStatus, type CabinClass } from '@prisma/client';
 import { toDateInput } from '@/lib/format';
 import { prisma } from '@/lib/prisma';
-import type { CabinSeats } from './capacity';
+import { CABIN_ORDER, type CabinSeats } from './capacity';
 import { minDepartureGapMinutes } from './config';
 
 /**
@@ -91,7 +91,9 @@ export async function loadScheduleFormData(): Promise<ScheduleFormData> {
       distanceKm: r.distanceKm,
     })),
     aircraft: aircraft.map((a) => {
-      const groups = seatGroups.filter((g) => g.aircraftId === a.id);
+      const groups = seatGroups
+        .filter((g) => g.aircraftId === a.id)
+        .sort((g1, g2) => CABIN_ORDER.indexOf(g1.cabinClass) - CABIN_ORDER.indexOf(g2.cabinClass));
       const cabins: CabinSeats = Object.fromEntries(groups.map((g) => [g.cabinClass, g._count._all]));
       return { ...a, cabins, totalSeats: groups.reduce((sum, g) => sum + g._count._all, 0) };
     }),

@@ -14,11 +14,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        {/* Mismas fuentes que usaba el HTML original: Plus Jakarta Sans, Space Grotesk
-            y los iconos Material Symbols Outlined. */}
+        {/* Tipografias oficiales: Plus Jakarta Sans, Space Grotesk y Playfair Display */}
         <link
           rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Space+Grotesk:wght@600&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0,1,-50..200"
+          href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@600&display=swap"
+        />
+        {/* Iconografia oficial Material Symbols Outlined */}
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
         />
       </head>
       {/* Las clases de <body> difieren entre login y vuelos, por eso cada pagina

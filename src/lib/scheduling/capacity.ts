@@ -43,6 +43,12 @@ export const CABIN_LABEL: Record<CabinClass, string> = {
   FIRST: 'Primera',
 };
 
+/**
+ * Orden canónico de cabinas (de proa a popa / mayor jerarquía a menor).
+ * Asegura consistencia en toda la UI y evita dependencia de orden no determinista en BD.
+ */
+export const CABIN_ORDER: readonly CabinClass[] = ['FIRST', 'BUSINESS', 'PREMIUM', 'ECONOMY'];
+
 /** Asientos ofrecidos por cabina, contra los que tiene el avion. */
 export function summarizeCabins(
   offers: readonly ClassOffer[],

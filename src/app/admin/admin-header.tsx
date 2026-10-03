@@ -27,17 +27,26 @@ export default function AdminHeader({ userName }: { userName: string }) {
   return (
     <header className="fixed top-0 left-0 w-full z-50 bg-primary-container shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
       <div className="min-h-20 w-full px-4 sm:px-space-lg lg:px-margin py-3 lg:py-0 flex flex-wrap items-center justify-between gap-space-sm">
-        <div className="flex flex-col">
-          <div className="flex items-center gap-space-xs">
-            <span className="font-headline-sm text-headline-sm text-surface-container-lowest leading-none">
-              AeroGestión
-            </span>
-            <span className="font-headline-sm text-headline-sm text-secondary leading-none">UNS</span>
+        <Link href="/admin/itinerario" className="flex items-center gap-3 group">
+          <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shadow-md shadow-black/20 shrink-0 overflow-hidden group-hover:scale-105 transition-transform">
+            <img
+              src="/brand-icon-transparent.png"
+              alt="AeroGestión UNS"
+              className="w-full h-full object-cover"
+            />
           </div>
-          <span className="font-label-sm text-label-sm text-primary-fixed-dim uppercase tracking-wider">
-            Panel de administración
-          </span>
-        </div>
+          <div className="flex flex-col">
+            <div className="flex items-baseline gap-1.5 leading-none">
+              <span className="font-bold text-lg text-surface-container-lowest tracking-tight">
+                AeroGestión
+              </span>
+              <span className="font-extrabold text-lg text-secondary tracking-wide">UNS</span>
+            </div>
+            <span className="font-label-sm text-[10px] text-primary-fixed-dim uppercase tracking-widest font-semibold mt-1">
+              Panel de administración
+            </span>
+          </div>
+        </Link>
 
         <nav
           aria-label="Navegacion de administracion"
@@ -55,18 +64,24 @@ export default function AdminHeader({ userName }: { userName: string }) {
           ))}
         </nav>
 
-        <button
-          className="flex items-center gap-space-sm bg-primary/70 px-space-sm py-space-xs rounded-full hover:bg-primary transition-colors"
-          onClick={logout}
-          title="Cerrar sesión"
-          type="button"
-        >
-          <span className="flex flex-col text-right">
-            <span className="font-label-md text-label-md text-surface-container-lowest leading-snug">{userName}</span>
-            <span className="font-label-sm text-label-sm text-secondary-fixed leading-none">Administrador</span>
-          </span>
-          <span className="material-symbols-outlined text-primary-fixed-dim">logout</span>
-        </button>
+        <div className="flex items-center gap-2.5">
+          <div className="flex flex-col text-right">
+            <span className="font-label-md text-label-md text-surface-container-lowest font-semibold leading-snug">
+              {userName}
+            </span>
+            <span className="font-label-sm text-[11px] text-secondary-fixed leading-none">
+              Administrador
+            </span>
+          </div>
+          <button
+            className="flex items-center justify-center w-9 h-9 rounded-full bg-primary/70 hover:bg-secondary text-primary-fixed-dim hover:text-white transition-all shadow-sm"
+            onClick={logout}
+            title="Cerrar sesión"
+            type="button"
+          >
+            <span className="material-symbols-outlined text-[19px]">logout</span>
+          </button>
+        </div>
       </div>
     </header>
   );

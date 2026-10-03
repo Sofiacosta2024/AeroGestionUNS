@@ -90,70 +90,88 @@ const isPremiumCabin = (cabin: CabinClass) => cabin === 'FIRST' || cabin === 'BU
 function ClassCard({ fareClass, offer, cabinSeats, onChange }: CardProps) {
   const dark = isPremiumCabin(fareClass.cabinClass);
   const priceChanged = offer.price !== '' && Number(offer.price) !== fareClass.basePrice;
-  const inputClass = `w-full rounded-lg font-headline-sm text-headline-sm font-bold border-0 focus:ring-2 focus:ring-secondary/30 ${
-    dark ? 'bg-primary text-surface-container-lowest' : 'bg-surface-container-lowest text-primary'
+  const inputClass = `w-full rounded-xl font-bold text-base border transition-all focus:outline-none focus:ring-2 focus:ring-[#E11D48]/25 ${
+    dark
+      ? 'bg-[#180938] border-purple-400/30 text-white focus:border-[#E11D48]'
+      : 'bg-white border-slate-200 text-slate-800 focus:border-[#E11D48] shadow-sm'
   }`;
-  const mutedText = dark ? 'text-primary-fixed-dim' : 'text-on-surface-variant';
+  const mutedText = dark ? 'text-purple-200/80' : 'text-slate-500';
 
   return (
     <div
-      className={`rounded-xl p-space-lg flex flex-col gap-space-md shadow-sm ${
-        dark ? 'bg-primary-container text-surface-container-lowest' : 'bg-surface-container-low'
+      className={`rounded-2xl p-space-lg flex flex-col gap-space-md border transition-all ${
+        dark
+          ? 'bg-[#1F0A43] border-purple-900/60 text-surface-container-lowest shadow-lg shadow-purple-950/20'
+          : 'bg-slate-50/70 border-slate-200/80 shadow-sm'
       }`}
     >
-      <div className="flex items-center justify-between border-b border-surface-container/40 pb-space-sm">
+      <div className={`flex items-center justify-between border-b pb-space-sm ${dark ? 'border-white/10' : 'border-slate-200'}`}>
         <div className="flex flex-col">
-          <h3 className={`font-headline-sm text-headline-sm font-bold ${dark ? '' : 'text-primary'}`}>{fareClass.name}</h3>
-          <span className={`font-code-telemetry text-code-telemetry text-xs ${dark ? 'text-secondary-fixed' : 'text-secondary'}`}>
+          <h3 className={`font-headline-sm text-headline-sm font-bold ${dark ? 'text-white' : 'text-slate-900'}`}>{fareClass.name}</h3>
+          <span className={`font-mono text-xs font-bold ${dark ? 'text-secondary-fixed' : 'text-[#E11D48]'}`}>
             {fareClass.code} · Cabina {CABIN_LABEL[fareClass.cabinClass]}
           </span>
         </div>
       </div>
 
       {fareClass.benefits.length > 0 && (
-        <ul className="flex flex-col gap-space-xs">
+        <ul className="flex flex-col gap-1.5">
           {fareClass.benefits.map((b) => {
             const [icon, ...text] = b.split('|');
             return (
-              <li key={b} className={`flex items-center gap-1 font-body-sm text-body-sm ${mutedText}`}>
-                {text.length > 0 && <span className="material-symbols-outlined text-[16px]">{icon}</span>}
-                {text.length > 0 ? text.join('|') : icon}
+              <li key={b} className={`flex items-center gap-1.5 text-xs font-medium ${mutedText}`}>
+                {text.length > 0 && <span className="material-symbols-outlined text-[16px] text-[#E11D48]">{icon}</span>}
+                <span>{text.length > 0 ? text.join('|') : icon}</span>
               </li>
             );
           })}
         </ul>
       )}
 
-      <div className="grid grid-cols-2 gap-space-sm">
-        <label className={`flex flex-col gap-space-xs font-label-sm text-label-sm uppercase ${mutedText}`}>
-          Asientos a vender
-          <input
-            className={`${inputClass} px-space-md py-3`}
-            max={cabinSeats}
-            min={1}
-            onChange={(e) => onChange({ seats: e.target.value })}
-            placeholder={cabinSeats !== undefined ? `máx. ${cabinSeats}` : ''}
-            type="number"
-            value={offer.seats}
-          />
+      <div className="grid grid-cols-2 gap-space-sm pt-1">
+        <label className={`flex flex-col gap-1 text-[11px] font-bold uppercase tracking-wider ${mutedText}`}>
+          <span>Asientos a vender</span>
+          <div className="relative flex items-center">
+            <input
+              className={`${inputClass} px-3.5 py-2.5 pr-14`}
+              max={cabinSeats}
+              min={1}
+              onChange={(e) => onChange({ seats: e.target.value })}
+              placeholder={cabinSeats !== undefined ? `máx. ${cabinSeats}` : ''}
+              type="number"
+              value={offer.seats}
+            />
+            <span className={`absolute right-3 text-[11px] font-semibold pointer-events-none ${dark ? 'text-purple-300' : 'text-slate-400'}`}>
+              butacas
+            </span>
+          </div>
         </label>
-        <label className={`flex flex-col gap-space-xs font-label-sm text-label-sm uppercase ${mutedText}`}>
-          Precio (ARS)
-          <input
-            className={`${inputClass} px-space-md py-3`}
-            min={1}
-            onChange={(e) => onChange({ price: e.target.value })}
-            type="number"
-            value={offer.price}
-          />
+        <label className={`flex flex-col gap-1 text-[11px] font-bold uppercase tracking-wider ${mutedText}`}>
+          <span>Precio por pasaje</span>
+          <div className="relative flex items-center">
+            <span className={`absolute left-3 text-xs font-bold pointer-events-none ${dark ? 'text-purple-300' : 'text-slate-400'}`}>
+              $
+            </span>
+            <input
+              className={`${inputClass} pl-7 pr-3.5 py-2.5`}
+              min={1}
+              onChange={(e) => onChange({ price: e.target.value })}
+              type="number"
+              value={offer.price}
+            />
+          </div>
         </label>
       </div>
 
-      <div className={`flex items-center justify-between font-body-sm text-body-sm ${mutedText}`}>
-        <span>Precio de catálogo: {formatArs(fareClass.basePrice)}</span>
+      <div className={`flex items-center justify-between text-xs pt-1 ${mutedText}`}>
+        <span>Base catálogo: <b className="font-mono">{formatArs(fareClass.basePrice)}</b></span>
         {priceChanged && (
-          <button className="underline" onClick={() => onChange({ price: String(fareClass.basePrice) })} type="button">
-            Restablecer
+          <button
+            className="text-[#E11D48] hover:text-[#BE123C] font-bold text-xs bg-rose-50 border border-rose-100 px-2 py-0.5 rounded-md hover:bg-rose-100 transition-colors"
+            onClick={() => onChange({ price: String(fareClass.basePrice) })}
+            type="button"
+          >
+            Restablecer precio
           </button>
         )}
       </div>

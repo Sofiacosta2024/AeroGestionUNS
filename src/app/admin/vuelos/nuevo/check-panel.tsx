@@ -64,19 +64,26 @@ export default function CheckPanel({ check, ready }: Props) {
 }
 
 const TONES = {
-  neutral: 'bg-surface-container-low text-on-surface-variant',
-  success: 'bg-tertiary-fixed text-on-tertiary-fixed',
-  warning: 'bg-secondary-fixed/60 text-on-secondary-fixed',
-  error: 'bg-error-container text-on-error-container',
+  neutral: 'bg-slate-50 border border-slate-200 text-slate-700',
+  success: 'bg-emerald-50 border border-emerald-200 text-emerald-900',
+  warning: 'bg-amber-50 border border-amber-200 text-amber-900',
+  error: 'bg-rose-50 border border-rose-200 text-rose-900',
+} as const;
+
+const ICON_COLORS = {
+  neutral: 'text-slate-500',
+  success: 'text-emerald-600',
+  warning: 'text-amber-600',
+  error: 'text-[#E11D48]',
 } as const;
 
 function Panel(props: { tone: keyof typeof TONES; icon: string; title?: string; children: React.ReactNode }) {
   return (
-    <div className={`flex items-start gap-space-sm p-space-md rounded-xl ${TONES[props.tone]}`} role="status">
-      <span className="material-symbols-outlined text-[20px] shrink-0">{props.icon}</span>
-      <div className="flex flex-col gap-space-xs font-label-md text-label-md">
-        {props.title && <span className="font-bold">{props.title}</span>}
-        {props.children}
+    <div className={`flex items-start gap-space-sm p-4 rounded-2xl shadow-sm ${TONES[props.tone]}`} role="status">
+      <span className={`material-symbols-outlined text-[22px] shrink-0 mt-0.5 ${ICON_COLORS[props.tone]}`}>{props.icon}</span>
+      <div className="flex flex-col gap-1 text-xs sm:text-sm">
+        {props.title && <span className="font-bold text-sm">{props.title}</span>}
+        <div>{props.children}</div>
       </div>
     </div>
   );
