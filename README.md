@@ -46,6 +46,7 @@ La aplicación queda en `http://localhost:3000`:
 | `NEXT_PUBLIC_SUPABASE_URL` | no | URL del proyecto Supabase. |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | no | Clave publicable de Supabase. |
 | `DEMO_MODE` | no | Habilita el botón **Acceso demo** del login. **Poner `false` en producción.** |
+| `MIN_DEPARTURE_GAP_MINUTES` | no | Minutos mínimos entre dos salidas del mismo aeropuerto (RF-01). Por defecto 20. |
 
 `AUTH_SECRET` se genera con `openssl rand -base64 32`.
 
@@ -107,8 +108,8 @@ botón desaparecerá y el endpoint responderá `404`.
 
 ```
 prisma/
-  schema.prisma          18 modelos, 16 enums
-  migrations/            migración inicial
+  schema.prisma          20 modelos, 16 enums
+  migrations/            migración inicial + migraciones de RF-01
   seed.ts                datos de demostración (idempotente)
 src/
   app/
@@ -116,7 +117,7 @@ src/
     page.tsx             redirección raíz
     login/               portal de autenticación
     vuelos/              motor de búsqueda
-    api/                 33 Route Handlers
+    api/                 39 Route Handlers
   lib/
     api.ts               envoltorio de handlers, errores HTTP y parseo
     audit.ts             auditoría no bloqueante
@@ -127,6 +128,7 @@ src/
     flights.ts           include/serialización de vuelos
     format.ts            importes, horarios y fechas (ART)
     prisma.ts            cliente Prisma singleton
+    scheduling/          programación de vuelos (RF-01): reglas, repositorio y servicio
     validation.ts        schemas Zod
     view-models.ts       formas de datos que cruzan a React
   tailwind (config.ts)   tokens compilados + variables por página
@@ -141,8 +143,8 @@ docs/
 ## Documentación
 
 - [`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md) — capas, sesión, zona horaria, temas.
-- [`docs/API.md`](docs/API.md) — los 35 endpoints, convenciones y ejemplos.
-- [`docs/MODELO-DATOS.md`](docs/MODELO-DATOS.md) — las 18 tablas, sus claves y decisiones.
+- [`docs/API.md`](docs/API.md) — los endpoints, convenciones y ejemplos.
+- [`docs/MODELO-DATOS.md`](docs/MODELO-DATOS.md) — las 20 tablas, sus claves y decisiones.
 
 ---
 

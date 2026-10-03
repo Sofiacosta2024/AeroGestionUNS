@@ -81,7 +81,7 @@ extiende la cookie de 1 a 30 días.
 | `GET` `PATCH` `DELETE` | `/api/airports/:iata` | público / `MOSTRADOR` / `ADMIN` | Detalle, edición, baja. |
 | `GET` | `/api/routes` | público | Rutas activas. |
 | `GET` `PATCH` `DELETE` | `/api/routes/:id` | público / `ADMIN` / `ADMIN` | Detalle, edición, baja. |
-| `POST` | `/api/routes` | `ADMIN` | Alta de ruta. |
+| `POST` | `/api/routes` | `ADMIN` | Alta de ruta. *Cambio RF-01:* `durationMinutes` es obligatoria y un par origen-destino existe una sola vez (`409` si ya existe). |
 | `GET` `POST` | `/api/aircraft` | público / `ADMIN` | Flota / alta. |
 | `GET` `PATCH` `DELETE` | `/api/aircraft/:id` | público / `ADMIN` / `ADMIN` | Detalle, edición, baja. |
 | `GET` `POST` `PUT` | `/api/aircraft/:id/seats` | público / `MOSTRADOR` / `MOSTRADOR` | Mapa de cabina, alta y carga masiva. |
@@ -104,7 +104,7 @@ columna `date`.
 | Método | Ruta | Rol | Descripción |
 | --- | --- | --- | --- |
 | `GET` | `/api/flights` | público | Buscador (alimenta `/vuelos`). |
-| `POST` | `/api/flights` | `MOSTRADOR` | Alta / actualización de un vuelo. |
+| `POST` | `/api/flights` | `MOSTRADOR` | Alta de un vuelo puntual con las reglas de RF-01 (ver abajo). |
 | `GET` `PATCH` `DELETE` | `/api/flights/:id` | público / `MOSTRADOR` / `ADMIN` | Detalle, edición, baja. |
 | `GET` `POST` `DELETE` | `/api/flights/:id/fares` | público / `MOSTRADOR` / `MOSTRADOR` | Precios del vuelo, alta, quitar. |
 | `PATCH` | `/api/flights/:id/status` | `MOSTRADOR` | Cambio de estado operativo. |
@@ -141,7 +141,7 @@ curl "localhost:3000/api/flights?origin=BHI&destination=AEP&date=2025-11-18"
         "tags": ["Directo"],
         "route": { "durationMinutes": 70, "originAirport": { "iataCode": "BHI" } },
         "aircraft": { "model": "Boeing 737-800", "registration": "LV-CKU" },
-        "prices": [ { "code": "ECONOMY", "name": "Economy Flex", "price": 64200, "currency": "ARS" } ]
+        "prices": [ { "code": "ECON-FLEX", "name": "Economy Premium", "cabinClass": "ECONOMY", "price": 64200, "currency": "ARS" } ]
       }
     ],
     "pagination": { "page": 1, "pageSize": 20, "total": 3, "pages": 1 }
@@ -153,6 +153,88 @@ Los horarios llegan en UTC y **se muestran en ART**: `09:45Z` es 06:45 de tabler
 
 `PATCH /api/flights/:id/status` acepta `status` y `reason` opcional, y valida la
 transición contra el estado actual.
+
+`POST /api/flights` — *cambio RF-01:* antes recibía `code` y `arrivalAt` y creaba el vuelo
+sin validar. Ahora el código `AG-####` y la llegada (salida + duración de la ruta) los
+calcula el sistema, y aplica las mismas reglas que el panel de programación (ver
+[Programación de vuelos](#programación-de-vuelos-rf-01)). Por dentro es un cronograma de un
+solo día publicado en el acto.
+
+```json
+{
+  "routeId": "...",
+  "aircraftId": "...",
+  "date": "2026-12-14",
+  "departureTime": "12:00",
+  "fares": [ { "fareId": "...", "price": 52900, "seats": 60 } ]
+}
+```
+
+## Programación de vuelos (RF-01)
+
+Alta y publicación de vuelos desde el panel de administración. Un **cronograma** define
+ruta, avión, vigencia (`validFrom`–`validTo`), días de operación (`weekdays`, 0 = domingo)
+y hora de salida en ART. Un vuelo único es un cronograma con `validFrom = validTo`.
+Mientras está en borrador no existen vuelos: se generan al **publicar**, así el buscador
+nunca muestra borradores.
+
+| Método | Ruta | Rol | Descripción |
+| --- | --- | --- | --- |
+| `POST` | `/api/flight-schedules/check` | `ADMIN` | Chequeo en vivo para el formulario. No guarda nada. |
+| `GET` `POST` | `/api/flight-schedules` | `ADMIN` | Lista (`status=DRAFT\|PUBLISHED`) / alta como borrador (con `publish: true` se publica en el acto). |
+| `GET` `PUT` `DELETE` | `/api/flight-schedules/:id` | `ADMIN` | Detalle / editar un borrador / descartar un borrador. |
+| `POST` | `/api/flight-schedules/:id/publish` | `ADMIN` | Publica el borrador: genera sus vuelos. |
+| `GET` | `/api/itinerary?date=YYYY-MM-DD` | `ADMIN` | Planilla del día: vuelos que salen ese día (ART), con ocupación por clase. |
+
+```json
+{
+  "routeId": "...",
+  "aircraftId": "...",
+  "validFrom": "2026-12-14",
+  "validTo": "2026-12-31",
+  "weekdays": [1, 2, 3, 4, 5],
+  "departureTime": "07:30",
+  "fares": [
+    { "fareId": "<Economy>", "price": 52900, "seats": 100 },
+    { "fareId": "<Economy Premium>", "price": 64200, "seats": 44 },
+    { "fareId": "<Primera Clase>", "price": 138000, "seats": 6 }
+  ],
+  "publish": false
+}
+```
+
+Reglas (se validan al chequear, al guardar y al publicar):
+
+- No hay salidas en el pasado.
+- Desde un mismo aeropuerto, dos salidas no pueden estar a menos de
+  `MIN_DEPARTURE_GAP_MINUTES` minutos (20 por defecto). Desde aeropuertos distintos sí
+  pueden coincidir.
+- Un avión no puede estar en dos vuelos cuyos horarios se superpongan.
+- Cada clase (tarifa activa) se vende con al menos 1 asiento y su precio. El tope es por
+  **cabina**: Economy + Economy Premium no superan los asientos de la cabina Economy del
+  avión; Primera Clase no supera los de su cabina.
+- La vigencia es de un año como máximo.
+
+Un borrador no reserva horario: si mientras tanto otro vuelo ocupa la franja, publicar
+responde `409`. Los conflictos vuelven en `error.details` con `kind`
+(`PAST_DEPARTURE`, `DEPARTURE_GAP`, `AIRCRAFT_BUSY`), `date`, `conflictingFlightCode` y
+`message`. Los datos inválidos (clases faltantes, asientos de más) responden `422`.
+
+`POST /api/flight-schedules/check` responde, sin guardar:
+
+```json
+{
+  "flightsCount": 10,
+  "dates": ["2026-12-14", "..."],
+  "departureTime": "07:30",
+  "arrivalTime": "08:40",
+  "durationMinutes": 70,
+  "cabins": [ { "cabinClass": "ECONOMY", "seats": 144, "assigned": 144 } ],
+  "conflicts": [],
+  "issues": [],
+  "canSave": true
+}
+```
 
 ## Pasajeros y reservas
 
