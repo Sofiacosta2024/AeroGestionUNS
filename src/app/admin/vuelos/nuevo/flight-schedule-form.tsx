@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import type { FormRoute, ScheduleFormData } from '@/lib/scheduling/form-data';
 import type { SerializedSchedule } from '@/lib/scheduling/serializers';
@@ -25,7 +26,14 @@ type Props = {
   draft: SerializedSchedule | null;
 };
 
-type Feedback = { tone: 'success' | 'error'; message: string; details: string[] };
+type Feedback = {
+  tone: 'success' | 'error';
+  message: string;
+  details: string[];
+  link?: { href: string; label: string };
+};
+
+const NEW_FORM_URL = '/admin/vuelos/nuevo';
 
 /**
  * Pantalla de alta y publicacion de vuelos (RF-01). Coordina el estado del formulario,
@@ -72,15 +80,16 @@ export default function FlightScheduleForm({ data, draft }: Props) {
 
       if (publish) {
         setPublished(schedule);
-        window.history.replaceState(null, '', '/admin/vuelos/nuevo');
+        window.history.replaceState(null, '', NEW_FORM_URL);
       } else {
-        setDraftId(schedule.id);
-        // Solo se actualiza la URL (para poder volver al borrador), sin recargar la pagina.
-        window.history.replaceState(null, '', `/admin/vuelos/nuevo?borrador=${schedule.id}`);
+        // El formulario queda vacio para cargar otro vuelo; el borrador se retoma desde la planilla.
+        resetForm();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
         setFeedback({
           tone: 'success',
-          message: 'Borrador guardado. No es visible en el buscador hasta que se publique.',
+          message: 'Borrador guardado. No es visible en el buscador hasta que se publique. Ya podés cargar otro vuelo.',
           details: [],
+          link: { href: '/admin/itinerario#borradores', label: 'Ver borradores' },
         });
       }
     } catch (err) {
@@ -94,19 +103,22 @@ export default function FlightScheduleForm({ data, draft }: Props) {
     }
   }
 
-  function startOver() {
+  /** Deja el formulario como recien abierto (equivale a recargar la pagina). */
+  function resetForm() {
     setPublished(null);
     setDraftId(null);
     setFeedback(null);
     setForm(initialFormState(data, null));
+    window.history.replaceState(null, '', NEW_FORM_URL);
   }
 
   return (
     <div className="max-w-7xl mx-auto w-full px-4 sm:px-space-lg lg:px-margin pt-space-lg flex flex-col gap-space-lg">
       <PageIntro isDraft={draftId !== null} />
+      {feedback?.tone === 'success' && <FeedbackBanner feedback={feedback} />}
 
       {published ? (
-        <PublishedPanel onNew={startOver} schedule={published} />
+        <PublishedPanel onNew={resetForm} schedule={published} />
       ) : (
         <>
           <RouteSummary
@@ -129,7 +141,7 @@ export default function FlightScheduleForm({ data, draft }: Props) {
           />
           <ClassOffersSection aircraft={aircraft} classes={data.classes} offers={form.offers} onOfferChange={updateOffer} />
           <CheckPanel check={check} ready={input !== null} />
-          {feedback && <FeedbackBanner feedback={feedback} />}
+          {feedback?.tone === 'error' && <FeedbackBanner feedback={feedback} />}
           <ActionBar
             canSubmit={canSubmit}
             flightsCount={check.result?.flightsCount ?? plannedFlightsCount(form)}
@@ -175,6 +187,11 @@ function FeedbackBanner({ feedback }: { feedback: Feedback }) {
   return (
     <div className={`flex flex-col gap-space-xs p-space-md rounded-xl font-label-md text-label-md ${tone}`} role="alert">
       <span className="font-bold">{feedback.message}</span>
+      {feedback.link && (
+        <Link className="underline font-bold w-fit" href={feedback.link.href}>
+          {feedback.link.label}
+        </Link>
+      )}
       {feedback.details.length > 0 && (
         <ul className="list-disc pl-5 font-body-sm text-body-sm">
           {feedback.details.map((d) => (

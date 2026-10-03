@@ -160,7 +160,10 @@ function DraftsSection({ drafts, onChanged }: { drafts: SerializedSchedule[]; on
   };
 
   return (
-    <section className="bg-surface-container-lowest rounded-xl p-space-lg shadow-md flex flex-col gap-space-md">
+    <section
+      className="bg-surface-container-lowest rounded-xl p-space-lg shadow-md flex flex-col gap-space-md scroll-mt-28"
+      id="borradores"
+    >
       <h2 className="font-headline-md text-headline-md text-primary">Borradores sin publicar ({drafts.length})</h2>
 
       {error && (
