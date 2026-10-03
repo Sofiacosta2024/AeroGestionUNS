@@ -115,27 +115,32 @@ async function main() {
 
   // -------------------------------------------------------------------------
   // 2. Tarifas (catalogo)
+  //
+  // RF-01: cada tarifa activa es una clase. `cabinClass` es la cabina fisica donde se
+  // sienta el pasajero: Economy y Economy Premium comparten la cabina ECONOMY y
+  // Primera Clase tiene la suya (FIRST).
   // -------------------------------------------------------------------------
   const fares = [
     {
       code: 'ECON-FLEX',
-      name: 'Economy Flex',
+      name: 'Economy Premium',
       cabinClass: CabinClass.ECONOMY,
       basePrice: 64200,
+      // Pendiente: kg de carry-on y de bodega de Economy Premium (aun sin definir).
       carryOnKg: 8,
       checkedBagKg: 0,
       changeAllowed: true,
-      seatSelection: false,
+      seatSelection: true,
       refundable: false,
       benefits: [
-        'luggage|Equipaje de mano 8kg',
+        'luggage|Carry-on + valija en bodega',
+        'airline_seat_recline_extra|Eleccion de asiento sin cargo',
         'event|Cambio sin penalidad',
       ],
     },
     {
       code: 'UNS-CORP',
-      name: 'UNS Corporativo',
-      // Primera Clase: RF-01 trabaja con 2 clases, Economy y Primera.
+      name: 'Primera Clase',
       cabinClass: CabinClass.FIRST,
       basePrice: 138000,
       carryOnKg: 10,
@@ -147,17 +152,17 @@ async function main() {
     },
     {
       code: 'ECON-BASIC',
-      name: 'Economy Basica',
+      name: 'Economy',
       cabinClass: CabinClass.ECONOMY,
       basePrice: 52900,
-      carryOnKg: 7,
+      // Solo mochila u objeto personal; elegir asiento tiene cargo (lo cobra el flujo de compra).
+      carryOnKg: 0,
       checkedBagKg: 0,
       changeAllowed: false,
       seatSelection: false,
       refundable: false,
-      benefits: ['luggage|Equipaje de mano 7kg'],
-      // Inactiva: RF-01 usa una sola tarifa por clase y Economy queda con ECON-FLEX.
-      isActive: false,
+      benefits: ['backpack|Solo mochila u objeto personal'],
+      isActive: true,
     },
   ];
 

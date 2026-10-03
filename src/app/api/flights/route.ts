@@ -5,7 +5,8 @@ import { requireRole } from '@/lib/auth';
 import { toUtcRange } from '@/lib/dates';
 import { flightInclude, serializeFlight, type FlightWithRelations } from '@/lib/flights';
 import { prisma } from '@/lib/prisma';
-import { flightSchema, flightSearchQuery } from '@/lib/validation';
+import { publishSingleFlight } from '@/lib/scheduling/service';
+import { flightSearchQuery, singleFlightSchema } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
 
@@ -104,11 +105,30 @@ export const GET = handler(async (req: Request) => {
   });
 });
 
+/**
+ * POST /api/flights
+ *
+ * Alta de un vuelo puntual con las mismas reglas que el panel de RF-01: el codigo
+ * AG-#### y la llegada los calcula el sistema, se exigen asientos y precio por clase,
+ * y se rechazan fechas pasadas y choques de horario. Por dentro es un cronograma de un
+ * solo dia publicado en el acto.
+ *
+ * Cambio RF-01: antes recibia `code` y `arrivalAt` y creaba el vuelo sin validar
+ * superposiciones, sin precios ni asientos (quedaba visible en el buscador vacio).
+ * Ahora recibe `{ routeId, aircraftId, date, departureTime, fares[] }` y pasa por el
+ * mismo servicio que el panel para que no haya un camino que saltee las reglas.
+ * Mantiene el acceso de MOSTRADOR por decision del subgrupo de RF-01; si eso cambia,
+ * solo hay que ajustar el `requireRole`.
+ */
 export const POST = handler(async (req: Request) => {
   const user = await requireRole(UserRole.MOSTRADOR);
-  const body = await parseBody(req, flightSchema);
+  const body = await parseBody(req, singleFlightSchema);
 
-  const flight = await prisma.flight.create({ data: body, include: flightInclude });
+  const schedule = await publishSingleFlight(body, user.id);
+  const flight = await prisma.flight.findFirstOrThrow({
+    where: { scheduleId: schedule.id },
+    include: flightInclude,
+  });
 
   await audit({ userId: user.id, action: 'CREATE', entity: 'Flight', entityId: flight.id });
   return created(serializeFlight(flight));

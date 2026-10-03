@@ -16,6 +16,11 @@ export function generateShortCode(length = 8): string {
   return out;
 }
 
+/** Codigo de vuelo comercial: AG-1437. El numero sale de la secuencia `flight_code_seq`. */
+export function formatFlightCode(sequenceValue: number): string {
+  return `AG-${String(sequenceValue).padStart(4, '0')}`;
+}
+
 /** Etiqueta numerica de equipaje. */
 export function generateBaggageTag(): string {
   return String(randomInt(0, 1_000_000_000)).padStart(10, '0');
