@@ -1,5 +1,7 @@
 'use client';
 
+import { formatDuration } from '@/lib/format';
+import type { SchedulingRules } from '@/lib/scheduling/config';
 import type { FormAircraft, FormAirport, FormRoute } from '@/lib/scheduling/form-data';
 import { ALL_DAYS, WEEKEND, WORKDAYS, type FormState, type ScheduleMode } from './form-model';
 import NewRouteForm from './new-route-form';
@@ -10,6 +12,7 @@ type Props = {
   airports: FormAirport[];
   aircraft: FormAircraft[];
   route: FormRoute | null;
+  rules: SchedulingRules;
   today: string;
   plannedCount: number;
   arrival: { time: string; nextDay: boolean } | null;
@@ -36,7 +39,7 @@ const SMALL_LABEL = 'font-label-sm text-[11px] font-bold uppercase tracking-wide
 
 /** Card 1 del diseno: ruta, avion, fechas, hora y dias de operacion. */
 export default function ScheduleSection(props: Props) {
-  const { form, airports, aircraft, route, today, plannedCount, arrival, onChange, onRouteCreated } = props;
+  const { form, airports, aircraft, route, rules, today, plannedCount, arrival, onChange, onRouteCreated } = props;
   const needsRoute = form.origin && form.destination && form.origin !== form.destination && !route;
 
   function toggleDay(day: number) {
@@ -97,6 +100,14 @@ export default function ScheduleSection(props: Props) {
           </select>
         </label>
       </div>
+
+      <p className="flex items-start gap-1.5 text-xs text-slate-500">
+        <span className="material-symbols-outlined text-[16px] text-slate-400">info</span>
+        <span>
+          Se valida que entre dos salidas del mismo aeropuerto haya al menos {rules.gapMinutes} min y que el mismo avión
+          tenga al menos {formatDuration(rules.turnaroundMinutes)} entre un aterrizaje y el siguiente despegue.
+        </span>
+      </p>
 
       {needsRoute && (
         <NewRouteForm destination={form.destination} onCreated={onRouteCreated} origin={form.origin} />

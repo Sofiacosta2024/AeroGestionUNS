@@ -114,7 +114,7 @@ sesión, así que conocerlo no puede dar acceso a datos nominales:
 
 - **Reglas puras** (no tocan la base ni el reloj): `calendar.ts` (fechas de operación y
   hora ART → UTC), `conflicts.ts` (salidas pasadas, margen entre salidas del mismo
-  aeropuerto, avión ocupado) y `capacity.ts` (asientos y precio por clase, con tope por
+  aeropuerto, rotación mínima del avión) y `capacity.ts` (asientos y precio por clase, con tope por
   cabina).
 - **`repository.ts`**: las consultas y escrituras con Prisma. Recibe el cliente o la
   transacción para que el servicio decida el alcance transaccional.

@@ -124,6 +124,7 @@ export default function FlightScheduleForm({ data, draft }: Props) {
             onRouteCreated={addRoute}
             plannedCount={plannedFlightsCount(form)}
             route={route}
+            rules={data.rules}
             today={data.today}
           />
           <ClassOffersSection aircraft={aircraft} classes={data.classes} offers={form.offers} onOfferChange={updateOffer} />

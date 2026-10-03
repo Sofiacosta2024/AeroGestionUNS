@@ -49,6 +49,7 @@ La aplicación queda en `http://localhost:3000`:
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | no | Clave publicable de Supabase. |
 | `DEMO_MODE` | no | Habilita el botón **Acceso demo** del login. **Poner `false` en producción.** |
 | `MIN_DEPARTURE_GAP_MINUTES` | no | Minutos mínimos entre dos salidas del mismo aeropuerto (RF-01). Por defecto 20. |
+| `MIN_TURNAROUND_MINUTES` | no | Minutos mínimos entre el aterrizaje de un avión y su siguiente despegue (RF-01). Por defecto 120. |
 
 `AUTH_SECRET` se genera con `openssl rand -base64 32`.
 
@@ -147,6 +148,7 @@ docs/
 - [`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md) — capas, sesión, zona horaria, temas.
 - [`docs/API.md`](docs/API.md) — los endpoints, convenciones y ejemplos.
 - [`docs/MODELO-DATOS.md`](docs/MODELO-DATOS.md) — las 20 tablas, sus claves y decisiones.
+- [`docs/RF-01-ALTA-VUELOS.md`](docs/RF-01-ALTA-VUELOS.md) — qué se hizo en RF-01 (alta y publicación de vuelos) y qué tienen que saber los demás subgrupos.
 
 ---
 

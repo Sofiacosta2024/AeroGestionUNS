@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 import type { ScheduleInput, SingleFlightInput } from '@/lib/validation';
 import { addMinutes, expandOperatingDates, localDateTimeToUtc, localTimeOf, weekdayOf } from './calendar';
 import { summarizeCabins, validateClassOffers, type CabinUsage, type OfferIssue } from './capacity';
-import { minDepartureGapMinutes } from './config';
+import { schedulingRules, type SchedulingRules } from './config';
 import {
   describeConflict,
   findAircraftOverlaps,
@@ -76,7 +76,7 @@ async function findConflicts(
   db: Db,
   ctx: ScheduleContext,
   planned: readonly PlannedFlight[],
-  gapMinutes: number,
+  rules: SchedulingRules,
   now: Date,
 ): Promise<ScheduleConflict[]> {
   const first = planned[0];
@@ -85,16 +85,20 @@ async function findConflicts(
 
   const [sameOrigin, sameAircraft] = await Promise.all([
     repo.findDeparturesFrom(db, ctx.route.originAirportId, {
-      from: addMinutes(first.departureAt, -gapMinutes),
-      to: addMinutes(last.departureAt, gapMinutes),
+      from: addMinutes(first.departureAt, -rules.gapMinutes),
+      to: addMinutes(last.departureAt, rules.gapMinutes),
     }),
-    repo.findAircraftFlights(db, ctx.aircraft.id, { from: first.departureAt, to: last.arrivalAt }),
+    // Ventana ampliada con la rotacion: trae tambien el vuelo anterior y el siguiente.
+    repo.findAircraftFlights(db, ctx.aircraft.id, {
+      from: addMinutes(first.departureAt, -rules.turnaroundMinutes),
+      to: addMinutes(last.arrivalAt, rules.turnaroundMinutes),
+    }),
   ]);
 
   return [
     ...findPastDepartures(planned, now),
-    ...findDepartureGapConflicts(planned, sameOrigin, gapMinutes),
-    ...findAircraftOverlaps(planned, sameAircraft),
+    ...findDepartureGapConflicts(planned, sameOrigin, rules.gapMinutes),
+    ...findAircraftOverlaps(planned, sameAircraft, rules.turnaroundMinutes),
   ];
 }
 
@@ -102,9 +106,9 @@ async function evaluate(db: Db, input: ScheduleInput, now: Date): Promise<Evalua
   const ctx = await repo.loadScheduleContext(db, input.routeId, input.aircraftId);
   if (!ctx) throw ApiError.badRequest('La ruta o el avion indicados no existen');
 
-  const gapMinutes = minDepartureGapMinutes();
+  const rules = schedulingRules();
   const planned = planFlights(input, ctx.route.durationMinutes);
-  const conflicts = await findConflicts(db, ctx, planned, gapMinutes, now);
+  const conflicts = await findConflicts(db, ctx, planned, rules, now);
   const issues = [
     ...contextIssues(ctx, planned),
     ...validateClassOffers(input.fares, ctx.classes, ctx.cabinSeats),
@@ -119,7 +123,7 @@ async function evaluate(db: Db, input: ScheduleInput, now: Date): Promise<Evalua
       arrivalTime: planned[0] ? localTimeOf(planned[0].arrivalAt) : null,
       durationMinutes: ctx.route.durationMinutes,
       cabins: summarizeCabins(input.fares, ctx.classes, ctx.cabinSeats),
-      conflicts: conflicts.map((c) => ({ ...c, message: describeConflict(c, gapMinutes) })),
+      conflicts: conflicts.map((c) => ({ ...c, message: describeConflict(c, rules) })),
       issues,
       canSave: conflicts.length === 0 && issues.length === 0,
     },

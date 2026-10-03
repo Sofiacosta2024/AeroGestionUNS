@@ -6,6 +6,9 @@
  * repositorio; aca solo esta la regla.
  */
 
+import { formatDuration } from '@/lib/format';
+import type { SchedulingRules } from './config';
+
 /** Un vuelo que generaria el cronograma. */
 export type PlannedFlight = {
   /** Fecha local de operacion (yyyy-mm-dd). */
@@ -57,25 +60,39 @@ export function findDepartureGapConflicts(
   );
 }
 
-/** Vuelos del mismo avion cuyo intervalo [salida, llegada) se superpone con el planificado. */
+/**
+ * Vuelos del mismo avion que no dejan el tiempo minimo de rotacion: entre el aterrizaje
+ * de un vuelo y el despegue del siguiente tienen que pasar al menos `turnaroundMinutes`,
+ * tanto respecto del vuelo anterior como del siguiente. Equivale a ampliar cada intervalo
+ * [salida, llegada) con la rotacion y buscar superposiciones (incluye el solapamiento
+ * directo). El avion puede salir desde cualquier aeropuerto.
+ */
 export function findAircraftOverlaps(
   planned: readonly PlannedFlight[],
   sameAircraftFlights: readonly ScheduledFlight[],
+  turnaroundMinutes: number,
 ): ScheduleConflict[] {
+  const turnaroundMs = turnaroundMinutes * MINUTE_MS;
   return planned.flatMap((p) =>
     sameAircraftFlights
-      .filter((f) => p.departureAt < f.arrivalAt && f.departureAt < p.arrivalAt)
+      .filter(
+        (f) =>
+          p.departureAt.getTime() < f.arrivalAt.getTime() + turnaroundMs &&
+          f.departureAt.getTime() < p.arrivalAt.getTime() + turnaroundMs,
+      )
       .map((f) => ({ kind: 'AIRCRAFT_BUSY' as const, date: p.date, conflictingFlightCode: f.code })),
   );
 }
 
-const CONFLICT_MESSAGES: Record<ConflictKind, (c: ScheduleConflict, gapMinutes: number) => string> = {
+const CONFLICT_MESSAGES: Record<ConflictKind, (c: ScheduleConflict, rules: SchedulingRules) => string> = {
   PAST_DEPARTURE: (c) => `${c.date}: la salida ya paso`,
-  DEPARTURE_GAP: (c, gap) =>
-    `${c.date}: sale a menos de ${gap} min del vuelo ${c.conflictingFlightCode} desde el mismo aeropuerto`,
-  AIRCRAFT_BUSY: (c) => `${c.date}: el avion ya esta asignado al vuelo ${c.conflictingFlightCode} en ese horario`,
+  DEPARTURE_GAP: (c, rules) =>
+    `${c.date}: sale a menos de ${rules.gapMinutes} min del vuelo ${c.conflictingFlightCode} desde el mismo aeropuerto`,
+  AIRCRAFT_BUSY: (c, rules) =>
+    `${c.date}: el avion tiene el vuelo ${c.conflictingFlightCode} y necesita al menos ` +
+    `${formatDuration(rules.turnaroundMinutes)} entre un aterrizaje y el siguiente despegue`,
 };
 
-export function describeConflict(conflict: ScheduleConflict, gapMinutes: number): string {
-  return CONFLICT_MESSAGES[conflict.kind](conflict, gapMinutes);
+export function describeConflict(conflict: ScheduleConflict, rules: SchedulingRules): string {
+  return CONFLICT_MESSAGES[conflict.kind](conflict, rules);
 }

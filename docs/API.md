@@ -209,7 +209,9 @@ Reglas (se validan al chequear, al guardar y al publicar):
 - Desde un mismo aeropuerto, dos salidas no pueden estar a menos de
   `MIN_DEPARTURE_GAP_MINUTES` minutos (20 por defecto). Desde aeropuertos distintos sí
   pueden coincidir.
-- Un avión no puede estar en dos vuelos cuyos horarios se superpongan.
+- El mismo avión necesita al menos `MIN_TURNAROUND_MINUTES` minutos (120 por defecto) entre
+  un aterrizaje y su siguiente despegue, respecto del vuelo anterior y del siguiente. Puede
+  despegar desde cualquier aeropuerto: se asume que vuelve vacío si hace falta.
 - Cada clase (tarifa activa) se vende con al menos 1 asiento y su precio. El tope es por
   **cabina**: Economy + Economy Premium no superan los asientos de la cabina Economy del
   avión; Primera Clase no supera los de su cabina.

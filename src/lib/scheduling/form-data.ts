@@ -2,7 +2,7 @@ import { AircraftStatus, type CabinClass } from '@prisma/client';
 import { toDateInput } from '@/lib/format';
 import { prisma } from '@/lib/prisma';
 import { CABIN_ORDER, type CabinSeats } from './capacity';
-import { minDepartureGapMinutes } from './config';
+import { schedulingRules, type SchedulingRules } from './config';
 
 /**
  * Datos que necesita el formulario de alta y publicacion (RF-01). Se cargan en el
@@ -43,7 +43,8 @@ export type ScheduleFormData = {
   routes: FormRoute[];
   aircraft: FormAircraft[];
   classes: FormClass[];
-  gapMinutes: number;
+  /** Margen entre salidas y rotacion minima del avion, para mostrarle al admin las reglas. */
+  rules: SchedulingRules;
   /** Hoy en hora ART (yyyy-mm-dd), para no ofrecer fechas pasadas. */
   today: string;
 };
@@ -98,7 +99,7 @@ export async function loadScheduleFormData(): Promise<ScheduleFormData> {
       return { ...a, cabins, totalSeats: groups.reduce((sum, g) => sum + g._count._all, 0) };
     }),
     classes: fares.map((f) => ({ ...f, basePrice: Number(f.basePrice) })),
-    gapMinutes: minDepartureGapMinutes(),
+    rules: schedulingRules(),
     today: toDateInput(new Date()),
   };
 }

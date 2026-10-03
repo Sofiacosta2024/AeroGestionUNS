@@ -81,7 +81,7 @@ El cliente definió **3 clases** (los documentos de RF todavía dicen 2 y convie
 | Llegada | Salida + duración de la ruta. |
 | Fechas | No se programan salidas en el pasado. |
 | Margen entre salidas | Desde un mismo aeropuerto, al menos 20 min entre salidas (`MIN_DEPARTURE_GAP_MINUTES`). Desde aeropuertos distintos pueden coincidir. |
-| Avión | No puede estar en dos vuelos cuyos horarios se superpongan. Solo se ofrecen aviones `ACTIVE`. |
+| Avión | Entre un aterrizaje y el siguiente despegue del mismo avión tiene que haber al menos `MIN_TURNAROUND_MINUTES` (2 h por defecto: desembarque, combustible), respecto del vuelo anterior y del siguiente. Puede despegar desde cualquier aeropuerto (se asume que vuelve vacío). Solo se ofrecen aviones `ACTIVE`. |
 | Asientos y precio | Cada clase con al menos 1 asiento y su precio (se propone el de catálogo). Tope por cabina contra el mapa del avión. |
 | Borrador y publicación | Un borrador no aparece en el buscador ni reserva horario. Al publicar se vuelve a validar y se generan los vuelos. |
 | Choques | Se detectan **mientras se carga** el formulario y otra vez al guardar y al publicar: nunca se guarda algo que choque. |
@@ -142,7 +142,8 @@ Postgres para que dos admins no tomen la misma franja a la vez.
    - Una salida desde BHI a menos de 20 min de otra se marca en rojo y no deja guardar.
    - A los 20 min exactos sí deja guardar.
    - La misma hora desde otro aeropuerto (por ejemplo AEP) está permitida.
-   - Elegir un avión ya ocupado en ese horario marca un choque.
+   - Usar un avión que aterriza hace menos de 2 h (o que despega antes de que pasen 2 h desde
+     el aterrizaje del vuelo nuevo) marca un choque. A las 2 h exactas está permitido.
    - Asignar más asientos que los de la cabina da error.
    - Un borrador no aparece en el buscador; después de publicarlo, sí.
    - Como pasajero, `/admin/*` redirige a `/vuelos`. Sin sesión, a `/login`.
