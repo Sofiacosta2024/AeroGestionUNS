@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import { flightInclude } from '@/lib/flights';
+import { BOOKABLE_STATUSES, flightInclude } from '@/lib/flights';
 import { localWeekDays, toUtcRange } from '@/lib/dates';
 import { getCurrentUser } from '@/lib/auth';
 import {
@@ -12,8 +12,6 @@ import VuelosClient from './vuelos-client';
 export const dynamic = 'force-dynamic';
 
 /** Fecha por defecto de la demo: "Mar 18 Nov 2025", la misma que mostraba el HTML. */
-const DEFAULT_DATE = '2025-11-18';
-const DEFAULT_RETURN_DATE = '2025-11-24';
 const DEFAULT_PASSENGERS = 2;
 const FLIGHT_PAGE_SIZE = 20;
 
@@ -23,8 +21,14 @@ const ROLE_LABEL: Record<string, string> = {
   ADMIN: 'Administrador',
 };
 
+
 export default async function VuelosPage() {
   const user = await getCurrentUser();
+
+  const DEFAULT_DATE = new Date(Date.now() - 3 * 3_600_000 + 24 * 3_600_000)
+    .toISOString().slice(0, 10);
+  const DEFAULT_RETURN_DATE = new Date(Date.parse(`${DEFAULT_DATE}T12:00:00Z`) + 6 * 86_400_000)
+    .toISOString().slice(0, 10);
 
   const [airports, routes, userRow] = await Promise.all([
     prisma.airport.findMany({ where: { isActive: true }, orderBy: { iataCode: 'asc' } }),
@@ -53,11 +57,13 @@ export default async function VuelosPage() {
   // Carga inicial directa desde Prisma (sin HTTP loopback). Las busquedas que
   // lanza el usuario si van contra /api/flights y /api/weekly-fares.
   const range = toUtcRange(DEFAULT_DATE);
+  const now = new Date();
   const initialFlightWhere = route
     ? {
         routeId: route.id,
-        status: { not: 'CANCELLED' as const },
-        departureAt: { gte: range.gte, lt: range.lt },
+        status: { in: BOOKABLE_STATUSES },
+        departureAt: { gte: range.gte && range.gte > now ? range.gte : now, lt: range.lt },
+        fares: { some: { availableSeats: { gte: DEFAULT_PASSENGERS }, fare: { isActive: true } } },
       }
     : null;
   const [flights, totalFlights] = await Promise.all([

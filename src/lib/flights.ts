@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import type { FlightStatus, Prisma } from '@prisma/client';
 
 export const flightInclude = {
   route: { include: { originAirport: true, destinationAirport: true } },
@@ -38,9 +38,11 @@ export type SerializedPrice = {
  * Normaliza los Decimal de Prisma a number y arma `prices`, que es lo que las
  * tarjetas de vuelo de la interfaz consumen directamente.
  */
-export function serializeFlight(flight: FlightWithRelations) {
+export const BOOKABLE_STATUSES: FlightStatus[] = ['SCHEDULED', 'BOARDING', 'DELAYED'];
+
+export function serializeFlight(flight: FlightWithRelations, minSeats = 0) {
   const prices: SerializedPrice[] = flight.fares
-    .filter((f) => f.fare.isActive)
+    .filter((f) => f.fare.isActive && f.availableSeats >= minSeats)
     .map((f) => ({
       id: f.fare.id,
       code: f.fare.code,

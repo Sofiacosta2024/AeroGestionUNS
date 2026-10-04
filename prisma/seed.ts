@@ -23,32 +23,31 @@ import {
   TripType,
   UserRole,
 } from '@prisma/client';
-import bcrypt from 'bcryptjs';
 import { localDayRangeUtc } from '../src/lib/dates';
 
 const prisma = new PrismaClient();
 
-/** Fecha base de las operaciones: el HTML original muestra "Mar 18 Nov 2025". */
-const BASE_YEAR = 2025;
-const BASE_MONTH = 10; // noviembre (indice 0-based)
+/** Dias hacia adelante (desde hoy) con vuelos generados. */
+const DAYS_AHEAD = 14;
 
-const ymd = (day: number) =>
-  `${BASE_YEAR}-${String(BASE_MONTH + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+/** yyyy-mm-dd (ART) de hoy + n dias. */
+const ymdFromToday = (n: number) =>
+  new Date(Date.now() - 3 * 3_600_000 + n * 86_400_000).toISOString().slice(0, 10);
 
-/**
- * Instante UTC de una hora de la OPERACION (ART, UTC-3).
- *
- * Los horarios del seed son horarios de tablero: `utc(18, 6, 45)` debe seguir
- * mostrandose como 06:45 en la interfaz, que formatea en ART. Se reutiliza la
- * misma conversion que los filtros de la API para que no se desalineen.
- */
-const utc = (day: number, hour: number, minute: number) => {
-  const midnight = Date.UTC(BASE_YEAR, BASE_MONTH, day);
-  const offsetMs = localDayRangeUtc(ymd(day)).start.getTime() - midnight;
-  return new Date(Date.UTC(BASE_YEAR, BASE_MONTH, day, hour, minute) + offsetMs);
-};
+/** Instante UTC de una hora de tablero (ART) del dia local `dateStr`. */
+const utc = (dateStr: string, hour: number, minute: number) =>
+  new Date(localDayRangeUtc(dateStr).start.getTime() + (hour * 60 + minute) * 60_000);
 
-const dayOnly = (day: number) => new Date(Date.UTC(BASE_YEAR, BASE_MONTH, day));
+/** Columna @db.Date: medianoche UTC del dia. */
+const dayOnly = (dateStr: string) => new Date(`${dateStr}T00:00:00Z`);
+
+const weekdayOf = (dateStr: string) => new Date(`${dateStr}T12:00:00Z`).getUTCDay();
+
+/** Factor de precio por dia de la semana (dom a sab): viernes y domingo mas caros. */
+const DAY_FACTOR = [1.12, 1.0, 1.0, 1.02, 1.08, 1.22, 1.1];
+const priced = (base: number, dateStr: string) =>
+  Math.round((base * DAY_FACTOR[weekdayOf(dateStr)]!) / 100) * 100;
+
 
 async function main() {
   console.log('> Seed AeroGestion UNS');
@@ -283,151 +282,94 @@ async function main() {
   // -------------------------------------------------------------------------
   // 5. Vuelos comerciales (los 3 servicios que muestra el HTML + extras)
   // -------------------------------------------------------------------------
-  const flightSeeds = [
-    {
-      code: 'AG-1420',
-      routeId: bhiAep.id,
-      registration: 'LV-CKU',
-      departureAt: utc(18, 6, 45),
-      arrivalAt: utc(18, 7, 55),
-      punctualityPct: 98,
-      tags: ['Directo'],
-      notes: 'Salida a primera hora con conexion inmediata en AEP.',
-      wifiLabel: 'Wi-Fi & USB Power',
-      wifiIcon: 'wifi',
-      prices: { flex: 64200, corp: 138000 },
-    },
-    {
-      code: 'AG-1428',
-      routeId: bhiAep.id,
-      registration: 'LV-FPS',
-      departureAt: utc(18, 13, 20),
-      arrivalAt: utc(18, 14, 30),
-      punctualityPct: 96,
-      tags: ['Directo'],
-      notes: null,
-      wifiLabel: null,
-      wifiIcon: null,
-      prices: { flex: 68400, corp: 142000 },
-    },
-    {
-      code: 'AG-1436',
-      routeId: bhiAep.id,
-      registration: 'LV-GGQ',
-      departureAt: utc(18, 19, 15),
-      arrivalAt: utc(18, 20, 25),
-      punctualityPct: 99,
-      tags: ['Directo'],
-      notes: null,
-      wifiLabel: null,
-      wifiIcon: null,
-      prices: { flex: 64200, corp: 138000 },
-    },
-    // Vueltos de la semana, para que el buscador tenga oferta en cada dia
-    {
-      code: 'AG-1421',
-      routeId: bhiAep.id,
-      registration: 'LV-CKU',
-      departureAt: utc(24, 10, 0),
-      arrivalAt: utc(24, 11, 10),
-      punctualityPct: 97,
-      tags: ['Directo'],
-      notes: null,
-      wifiLabel: null,
-      wifiIcon: null,
-      prices: { flex: 68900, corp: 139000 },
-    },
-    {
-      code: 'AG-1425',
-      routeId: bhiAep.id,
-      registration: 'LV-FPS',
-      departureAt: utc(19, 9, 15),
-      arrivalAt: utc(19, 10, 25),
-      punctualityPct: 96,
-      tags: ['Directo'],
-      notes: null,
-      wifiLabel: null,
-      wifiIcon: null,
-      prices: { flex: 65400, corp: 138500 },
-    },
-  ];
+  const routeByCode = new Map((await prisma.route.findMany()).map((r) => [r.code, r] as const));
 
-  for (const f of flightSeeds) {
-    const aircraftId = aircraftByReg.get(f.registration)!;
+// `every`: se genera un vuelo cada N dias, asi hay dias sin oferta para probar "sin resultados".
+// (No se modela la rotacion real de las aeronaves: solo que no se pisen en el mismo horario.)
+const SLOTS = [
+  { route: 'BHI-AEP', reg: 'LV-CKU', h: 6,  m: 45, flex: 64200, corp: 138000, punct: 98, every: 1 },
+  { route: 'BHI-AEP', reg: 'LV-FPS', h: 13, m: 20, flex: 68400, corp: 142000, punct: 96, every: 1 },
+  { route: 'BHI-AEP', reg: 'LV-GGQ', h: 19, m: 15, flex: 64200, corp: 138000, punct: 99, every: 1 },
+  { route: 'AEP-BHI', reg: 'LV-CKU', h: 9,  m: 30, flex: 64200, corp: 138000, punct: 97, every: 1 },
+  { route: 'AEP-BHI', reg: 'LV-FPS', h: 17, m: 10, flex: 68400, corp: 142000, punct: 96, every: 1 },
+  { route: 'BHI-EZE', reg: 'LV-GGQ', h: 10, m: 0,  flex: 66800, corp: 140000, punct: 95, every: 2 },
+  { route: 'BHI-MDZ', reg: 'LV-FPS', h: 8,  m: 30, flex: 88500, corp: 171000, punct: 94, every: 3 },
+  { route: 'BHI-COR', reg: 'LV-CKU', h: 15, m: 45, flex: 84200, corp: 165000, punct: 95, every: 3 },
+];
+
+let flightCount = 0;
+for (let d = 0; d < DAYS_AHEAD; d++) {
+  const dateStr = ymdFromToday(d);
+  const weekday = weekdayOf(dateStr);
+
+  for (const [i, s] of SLOTS.entries()) {
+    if (d % s.every !== 0) continue;
+
+    const route = routeByCode.get(s.route)!;
+    const aircraftId = aircraftByReg.get(s.reg)!;
+    const code = `AG-${dateStr.slice(5).replace('-', '')}${String.fromCharCode(65 + i)}`;
+    const departureAt = utc(dateStr, s.h, s.m);
+    const arrivalAt = new Date(departureAt.getTime() + (route.durationMinutes ?? 70) * 60_000);
+
+    const data = {
+      routeId: route.id,
+      aircraftId,
+      departureAt,
+      arrivalAt,
+      punctualityPct: s.punct,
+      tags: ['Directo'],
+      status: FlightStatus.SCHEDULED,
+    };
     const flight = await prisma.flight.upsert({
-      where: { code: f.code },
-      update: {
-        routeId: f.routeId,
-        aircraftId,
-        departureAt: f.departureAt,
-        arrivalAt: f.arrivalAt,
-        punctualityPct: f.punctualityPct,
-        tags: f.tags,
-        notes: f.notes,
-        status: FlightStatus.SCHEDULED,
-      },
-      create: {
-        code: f.code,
-        routeId: f.routeId,
-        aircraftId,
-        departureAt: f.departureAt,
-        arrivalAt: f.arrivalAt,
-        isDirect: true,
-        punctualityPct: f.punctualityPct,
-        tags: f.tags,
-        notes: f.notes,
-        status: FlightStatus.SCHEDULED,
-      },
+      where: { code },
+      update: data,
+      create: { code, isDirect: true, ...data },
     });
+
+    // Los viernes la salida de las 19:15 queda con pocos lugares (prueba del filtro de pasajeros)
+    const flexSeats = weekday === 5 && s.h === 19 ? 3 : 132;
+    const flexPrice = priced(s.flex, dateStr);
+    const corpPrice = priced(s.corp, dateStr);
 
     await prisma.flightFare.upsert({
       where: { flightId_fareId: { flightId: flight.id, fareId: econFlex.id } },
-      update: { price: f.prices.flex, availableSeats: 132 },
-      create: { flightId: flight.id, fareId: econFlex.id, price: f.prices.flex, availableSeats: 132 },
+      update: { price: flexPrice, availableSeats: flexSeats },
+      create: { flightId: flight.id, fareId: econFlex.id, price: flexPrice, availableSeats: flexSeats },
     });
     await prisma.flightFare.upsert({
       where: { flightId_fareId: { flightId: flight.id, fareId: unsCorp.id } },
-      update: { price: f.prices.corp, availableSeats: 12 },
-      create: { flightId: flight.id, fareId: unsCorp.id, price: f.prices.corp, availableSeats: 12 },
+      update: { price: corpPrice, availableSeats: 12 },
+      create: { flightId: flight.id, fareId: unsCorp.id, price: corpPrice, availableSeats: 12 },
     });
-
-    // Amenidades por vuelo -> tags que usa la tarjeta del HTML
-    if (f.wifiIcon) {
-      await prisma.flight.update({
-        where: { id: flight.id },
-        data: { tags: [...f.tags, `${f.wifiIcon}|${f.wifiLabel}`] },
-      });
-    }
+    flightCount++;
   }
-  console.log(`  ${flightSeeds.length} vuelos con tarifas`);
-
+}
+console.log(`  ${flightCount} vuelos con tarifas (proximos ${DAYS_AHEAD} dias)`);
   // -------------------------------------------------------------------------
   // 6. Calendario semanal de tarifas (Dom 16 -> Sab 22 nov)
   // -------------------------------------------------------------------------
-  const weekly = [
-    { day: 16, price: 72500, demandLevel: DemandLevel.NORMAL },
-    { day: 17, price: 68900, demandLevel: DemandLevel.NORMAL },
-    { day: 18, price: 64200, demandLevel: DemandLevel.NORMAL },
-    { day: 19, price: 65400, demandLevel: DemandLevel.NORMAL },
-    { day: 20, price: 69800, demandLevel: DemandLevel.NORMAL },
-    { day: 21, price: 78200, demandLevel: DemandLevel.HIGH },
-    { day: 22, price: 71100, demandLevel: DemandLevel.NORMAL },
-  ];
-  for (const w of weekly) {
-    const date = dayOnly(w.day);
-    await prisma.weeklyFare.upsert({
-      where: { routeId_date: { routeId: bhiAep.id, date } },
-      update: { price: w.price, demandLevel: w.demandLevel },
-      create: { routeId: bhiAep.id, date, price: w.price, demandLevel: w.demandLevel },
+  const WEEKLY_BASE: Record<string, number> = {
+  'BHI-AEP': 64200, 'AEP-BHI': 64200, 'BHI-EZE': 66800, 'BHI-MDZ': 88500, 'BHI-COR': 84200,
+};
+const weeklyRows = [];
+for (const [code, base] of Object.entries(WEEKLY_BASE)) {
+  const route = routeByCode.get(code)!;
+  for (let d = -7; d < DAYS_AHEAD + 7; d++) {
+    const dateStr = ymdFromToday(d);
+    weeklyRows.push({
+      routeId: route.id,
+      date: dayOnly(dateStr),
+      price: priced(base, dateStr),
+      demandLevel: DAY_FACTOR[weekdayOf(dateStr)]! >= 1.15 ? DemandLevel.HIGH : DemandLevel.NORMAL,
     });
   }
-  console.log(`  ${weekly.length} tarifas semanales (calendario)`);
+}
+await prisma.weeklyFare.createMany({ data: weeklyRows, skipDuplicates: true });
+console.log(`  ${weeklyRows.length} tarifas semanales (calendario)`);
 
   // -------------------------------------------------------------------------
   // 7. Usuarios de los 3 perfiles del login + pasajero asociado
   // -------------------------------------------------------------------------
-  const hash = await bcrypt.hash('AeroGestion2025!', 12);
-
   const users = [
     {
       email: 'pasajero@uns.edu.ar',
@@ -466,10 +408,9 @@ async function main() {
   for (const u of users) {
     const user = await prisma.user.upsert({
       where: { email: u.email },
-      update: { passwordHash: hash, role: u.role, isActive: true },
+      update: { role: u.role, isActive: true },
       create: {
         email: u.email,
-        passwordHash: hash,
         role: u.role,
         legajo: u.legajo,
         firstName: u.firstName,
@@ -491,18 +432,25 @@ async function main() {
       });
     }
   }
-  console.log(`  ${users.length} usuarios (password: AeroGestion2025!)`);
+
+  console.log(` ${users.length} usuarios (sin contraseña: el acceso es por Clerk)`);
 
   // -------------------------------------------------------------------------
   // 8. Reserva de ejemplo con pasajero, pago y pase de abordaje
   // -------------------------------------------------------------------------
-  const flight1420 = await prisma.flight.findUniqueOrThrow({ where: { code: 'AG-1420' } });
-  const seat1420 = await prisma.seat.findFirstOrThrow({
-    where: { aircraftId: flight1420.aircraftId, rowNumber: 12, columnLetter: 'A' },
+  const demoFlight = await prisma.flight.findFirstOrThrow({
+    where: { routeId: bhiAep.id, departureAt: { gte: new Date() } },
+    orderBy: { departureAt: 'asc' },
+  });  
+
+  const [seat1420, seat1420b] = await prisma.seat.findMany({
+    where: { aircraftId: demoFlight.aircraftId, rowNumber: 12 },
+    orderBy: { columnLetter: 'asc' },
+    take: 2,
   });
-  const seat1420b = await prisma.seat.findFirstOrThrow({
-    where: { aircraftId: flight1420.aircraftId, rowNumber: 12, columnLetter: 'B' },
-  });
+  if (!seat1420 || !seat1420b) {
+    throw new Error('El avion del vuelo demo no tiene la fila 12');
+  }
 
   const existing = await prisma.booking.findUnique({ where: { bookingCode: 'AG-DEMO01' } });
   if (!existing) {
@@ -520,11 +468,11 @@ async function main() {
         flights: {
           create: [
             {
-              flightId: flight1420.id,
+              flightId: demoFlight.id,
               fareId: econFlex.id,
               price,
               isReturn: false,
-              departureAt: flight1420.departureAt,
+              departureAt: demoFlight.departureAt,
             },
           ],
         },
@@ -542,7 +490,7 @@ async function main() {
                 create: {
                   code: 'BP-7F3K9Q-LF',
                   seatId: seat1420.id,
-                  flightCode: flight1420.code,
+                  flightCode: demoFlight.code,
                 },
               },
               baggage: {
@@ -561,7 +509,7 @@ async function main() {
                 create: {
                   code: 'BP-7F3K9Q-MF',
                   seatId: seat1420b.id,
-                  flightCode: flight1420.code,
+                  flightCode: demoFlight.code,
                 },
               },
               baggage: {
@@ -607,7 +555,7 @@ async function main() {
           code: 'BP-7F3K9Q-MF',
           bookingPassengerId: bp.id,
           seatId: seats[i].id,
-          flightCode: flight1420.code,
+          flightCode: demoFlight.code,
         },
       });
       console.log('  reserva de ejemplo: butaca y pase completados');

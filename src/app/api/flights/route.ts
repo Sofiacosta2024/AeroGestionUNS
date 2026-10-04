@@ -1,9 +1,9 @@
 import { Prisma, UserRole } from '@prisma/client';
-import { created, handler, ok, parseBody, parseQuery } from '@/lib/api';
+import { ApiError, created, handler, ok, parseBody, parseQuery } from '@/lib/api';
 import { audit } from '@/lib/audit';
 import { requireRole } from '@/lib/auth';
-import { toUtcRange } from '@/lib/dates';
-import { flightInclude, serializeFlight, type FlightWithRelations } from '@/lib/flights';
+import { localTimeUtc, toUtcRange } from '@/lib/dates';
+import { BOOKABLE_STATUSES, flightInclude, serializeFlight, type FlightWithRelations } from '@/lib/flights';
 import { prisma } from '@/lib/prisma';
 import { flightSchema, flightSearchQuery } from '@/lib/validation';
 
@@ -22,10 +22,36 @@ export const GET = handler(async (req: Request) => {
   const {
     page, pageSize, origin, destination, date, from, to,
     status, routeId, minPrice, maxPrice, sort, order, onlyDirect,
+    timeFrom, timeTo, passengers, available,
   } = q;
 
+  if (available && origin && origin === destination) {
+    throw ApiError.badRequest('El origen y el destino no pueden ser iguales');
+  }
+  if (timeFrom && timeTo && timeFrom > timeTo) {
+    throw ApiError.badRequest('La hora desde no puede ser mayor que la hora hasta');
+  }
+
+  const priceCond =
+    minPrice !== undefined || maxPrice !== undefined
+      ? {
+          price: {
+            ...(minPrice !== undefined ? { gte: minPrice } : {}),
+            ...(maxPrice !== undefined ? { lte: maxPrice } : {}),
+          },
+        }
+      : {};
+  const fareSome: Prisma.FlightFareWhereInput = {
+    ...priceCond,
+    ...(available ? { availableSeats: { gte: passengers }, fare: { isActive: true } } : {}),
+  };
+
   const where: Prisma.FlightWhereInput = {
-    ...(status ? { status } : { status: { not: 'CANCELLED' } }),
+    ...(available
+      ? { status: { in: BOOKABLE_STATUSES } }
+      : status
+        ? { status }
+        : { status: { not: 'CANCELLED' } }),
     ...(routeId ? { routeId } : {}),
     ...(onlyDirect === undefined ? {} : { isDirect: onlyDirect }),
     ...(origin || destination
@@ -36,27 +62,26 @@ export const GET = handler(async (req: Request) => {
           },
         }
       : {}),
-    ...(minPrice !== undefined || maxPrice !== undefined
-      ? {
-          fares: {
-            some: {
-              ...(minPrice !== undefined ? { price: { gte: minPrice } } : {}),
-              ...(maxPrice !== undefined ? { price: { lte: maxPrice } } : {}),
-            },
-          },
-        }
-      : {}),
+    ...(Object.keys(fareSome).length > 0 ? { fares: { some: fareSome } } : {}),
   };
 
-  // `date` es el caso de uso de la UI (un dia puntual) y se resuelve en ART.
+  // `date` es un dia puntual en ART; con `timeFrom`/`timeTo` se acota dentro de ese dia.
   const range = toUtcRange(from ?? date, to);
-  if (range.gte || range.lt) {
-    where.departureAt = {
-      ...(range.gte ? { gte: range.gte } : {}),
-      ...(range.lt ? { lt: range.lt } : {}),
-    };
+  let gte = range.gte;
+  let lt = range.lt;
+  if (date && !from && !to) {
+    if (timeFrom) gte = localTimeUtc(date, timeFrom);
+    if (timeTo) lt = new Date(localTimeUtc(date, timeTo).getTime() + 60_000); // incluye HH:mm completo
+  }
+  if (available) {
+    const now = new Date();
+    if (!gte || gte < now) gte = now; // un vuelo que ya salio no se puede reservar
+  }
+  if (gte || lt) {
+    where.departureAt = { ...(gte ? { gte } : {}), ...(lt ? { lt } : {}) };
   }
 
+  const minSeats = available ? passengers : 0;
   const total = await prisma.flight.count({ where });
 
   // El orden por precio no es posible en SQL (depende del minimo de FlightFare),
@@ -79,7 +104,7 @@ export const GET = handler(async (req: Request) => {
 
     const start = (page - 1) * pageSize;
     return ok({
-      data: sorted.slice(start, start + pageSize).map(serializeFlight),
+      data: sorted.slice(start, start + pageSize).map((f) => serializeFlight(f, minSeats)),
       pagination: {
         page,
         pageSize,
@@ -99,7 +124,7 @@ export const GET = handler(async (req: Request) => {
   });
 
   return ok({
-    data: data.map(serializeFlight),
+    data: data.map((f) => serializeFlight(f, minSeats)),
     pagination: { page, pageSize, total, pages: Math.ceil(total / pageSize) },
   });
 });

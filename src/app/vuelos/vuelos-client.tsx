@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useClerk } from '@clerk/nextjs';
 import { formatDayMonth, formatDuration, formatFullDate, formatTime, formatWeekday } from '@/lib/format';
@@ -33,6 +33,17 @@ const DEMAND_LABEL: Record<string, string> = {
   LOW: 'Baja Demanda',
   NORMAL: 'Normal',
   HIGH: 'Alta Demanda',
+};
+
+const TIME_SLOTS = [
+  { id: 'ALL', label: 'Cualquier horario', from: '', to: '' },
+  { id: 'MORNING', label: 'Mañana (hasta 12:00)', from: '00:00', to: '11:59' },
+  { id: 'AFTERNOON', label: 'Tarde (12:00 a 18:59)', from: '12:00', to: '18:59' },
+  { id: 'NIGHT', label: 'Noche (desde 19:00)', from: '19:00', to: '23:59' },
+] as const;
+type SlotId = (typeof TIME_SLOTS)[number]['id'];
+type SearchSnapshot = {
+  origin: string; destination: string; date: string; passengers: number; slot: SlotId;
 };
 
 const STEPS: { n: number; label: string; icon?: string; state: 'active' | 'upcoming' | 'ghost' }[] = [
@@ -78,6 +89,9 @@ export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap
   const [date, setDate] = useState(bootstrap.initialQuery.date);
   const [returnDate, setReturnDate] = useState(bootstrap.initialQuery.returnDate);
   const [passengers, setPassengers] = useState(bootstrap.initialQuery.passengers);
+  const [slot, setSlot] = useState<SlotId>('ALL');
+  const [lastQuery, setLastQuery] = useState<SearchSnapshot | null>(null);
+  const searchSeq = useRef(0);
 
   const [flights, setFlights] = useState<FlightCardData[]>(bootstrap.initialFlights);
   const [pagination, setPagination] = useState<FlightPagination>(bootstrap.initialPagination);
@@ -91,6 +105,13 @@ export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [clock, setClock] = useState('--:--:--');
+  // Solo ofrece destinos que tienen ruta desde el origen elegido
+  const destinations = useMemo(() => {
+    const valid = new Set(
+      bootstrap.routes.filter((r) => r.origin === origin).map((r) => r.destination),
+    );
+    return bootstrap.airports.filter((a) => valid.has(a.iataCode));
+  }, [bootstrap, origin]);
 
   // El aviso de "en construccion" se cierra solo.
   useEffect(() => {
@@ -132,64 +153,80 @@ export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap
     null;
   const total = selectedPrice ? selectedPrice.price * passengers : 0;
 
-  async function runSearch(page = 1, refreshWeeklyFares = true) {
-    setLoading(true);
-    setError(null);
-    try {
-      const flightQuery = new URLSearchParams({
-        origin,
-        destination,
-        date,
-        page: String(page),
-        pageSize: String(FLIGHT_PAGE_SIZE),
-        sort: 'departure',
-        order: 'asc',
-      });
-      const fareQuery = new URLSearchParams({
-        origin,
-        destination,
-        from: week[0]!,
-        to: week[6]!,
-      });
+  async function runSearch(
+  page = 1,
+  refreshWeeklyFares = true,
+  override: Partial<SearchSnapshot> = {},
+) {
+  // Página 1 = lo que muestra el formulario; otras páginas = la última búsqueda hecha
+  const q: SearchSnapshot =
+    page === 1 || !lastQuery
+      ? { origin, destination, date, passengers, slot, ...override }
+      : lastQuery;
 
-      const [flightRes, fareRes] = await Promise.all([
-        fetch(`/api/flights?${flightQuery.toString()}`),
-        refreshWeeklyFares
-          ? fetch(`/api/weekly-fares?${fareQuery.toString()}`)
-          : Promise.resolve(null),
-      ]);
-
-      const flightData = await readJson<{
-        data: ApiFlight[];
-        pagination: FlightPagination;
-      }>(flightRes);
-
-      const nextFlights: FlightCardData[] = flightData.data;
-      setFlights(nextFlights);
-      setPagination(flightData.pagination);
-
-      if (fareRes) {
-        const fareData = await readJson<{ data: ApiWeeklyFare[] }>(fareRes);
-        setWeeklyFares(
-          fareData.data.map((w) => ({
-            id: w.id,
-            date: w.date,
-            price: w.price,
-            demandLevel: w.demandLevel,
-            currency: w.currency,
-          })),
-        );
-      }
-
-      const first = nextFlights[0];
-      const firstFare = first?.prices[0];
-      setSelection(first && firstFare ? { flightId: first.id, fareId: firstFare.id } : null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error inesperado al buscar vuelos');
-    } finally {
-      setLoading(false);
-    }
+  if (q.origin === q.destination) {
+    setError('El origen y el destino no pueden ser iguales');
+    return;
   }
+
+  const seq = ++searchSeq.current;
+  setLoading(true);
+  setError(null);
+  try {
+    const slotDef = TIME_SLOTS.find((s) => s.id === q.slot)!;
+    const flightQuery = new URLSearchParams({
+  origin: q.origin,
+  destination: q.destination,
+  date: q.date,
+  passengers: String(q.passengers),
+  page: String(page),
+  pageSize: String(FLIGHT_PAGE_SIZE),
+  sort: 'departure',
+  order: 'asc',
+});
+flightQuery.set('available', 'true');   // <- acá
+if (slotDef.from) flightQuery.set('timeFrom', slotDef.from);
+if (slotDef.to) flightQuery.set('timeTo', slotDef.to);
+
+    const wk = localWeekDays(q.date);
+    const fareQuery = new URLSearchParams({
+      origin: q.origin,
+      destination: q.destination,
+      from: wk[0]!,
+      to: wk[6]!,
+    });
+
+    const [flightRes, fareRes] = await Promise.all([
+      fetch(`/api/flights?${flightQuery}`),
+      refreshWeeklyFares ? fetch(`/api/weekly-fares?${fareQuery}`) : Promise.resolve(null),
+    ]);
+
+    const flightData = await readJson<{ data: ApiFlight[]; pagination: FlightPagination }>(flightRes);
+    const fareData = fareRes ? await readJson<{ data: ApiWeeklyFare[] }>(fareRes) : null;
+    if (seq !== searchSeq.current) return; // llegó una búsqueda más nueva
+
+    const nextFlights: FlightCardData[] = flightData.data;
+    setFlights(nextFlights);
+    setPagination(flightData.pagination);
+    setLastQuery(q);
+    if (fareData) {
+      setWeeklyFares(
+        fareData.data.map((w) => ({
+          id: w.id, date: w.date, price: w.price, demandLevel: w.demandLevel, currency: w.currency,
+        })),
+      );
+    }
+    const first = nextFlights[0];
+    const firstFare = first?.prices[0];
+    setSelection(first && firstFare ? { flightId: first.id, fareId: firstFare.id } : null);
+  } catch (err) {
+    if (seq === searchSeq.current) {
+      setError(err instanceof Error ? err.message : 'Error inesperado al buscar vuelos');
+    }
+  } finally {
+    if (seq === searchSeq.current) setLoading(false);
+  }
+}
 
   async function logout() {
      await signOut({ redirectUrl: '/login' });
@@ -484,8 +521,12 @@ export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap
                   <select
                     aria-label="Origen"
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    onChange={(e) => setOrigin(e.target.value)}
-                    value={origin}
+                    onChange={(e) => {
+                        const next = e.target.value;
+                        setOrigin(next);
+                        const valid = bootstrap.routes.filter((r) => r.origin === next).map((r) => r.destination);
+                        if (!valid.includes(destination)) setDestination(valid[0] ?? destination);
+                      }}
                   >
                     {bootstrap.airports.map((a) => (
                       <option key={a.iataCode} value={a.iataCode}>
@@ -508,7 +549,7 @@ export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap
                     onChange={(e) => setDestination(e.target.value)}
                     value={destination}
                   >
-                    {bootstrap.airports.map((a) => (
+                    {destinations.map((a) =>  (
                       <option key={a.iataCode} value={a.iataCode}>
                         {a.iataCode} — {a.name}
                       </option>
@@ -568,6 +609,23 @@ export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap
                       <option key={n} value={n}>
                         {n} {n === 1 ? 'pasajero' : 'pasajeros'}
                       </option>
+                    ))}
+                  </select>
+                </Field>
+
+                <Field label="Horario" icon="schedule">
+                  <span className="font-label-md text-label-md text-on-surface font-semibold truncate">
+                    {TIME_SLOTS.find((s) => s.id === slot)!.label}
+                  </span>
+                  <span className="font-body-sm text-body-sm text-outline">Hora de salida</span>
+                  <select
+                    aria-label="Horario de salida"
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    onChange={(e) => setSlot(e.target.value as SlotId)}
+                    value={slot}
+                  >
+                    {TIME_SLOTS.map((s) => (
+                      <option key={s.id} value={s.id}>{s.label}</option>
                     ))}
                   </select>
                 </Field>
@@ -643,7 +701,7 @@ export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap
                     <button
                       key={day}
                       className="flex flex-col items-center justify-center p-space-sm rounded-lg bg-surface-container-lowest hover:bg-surface-container transition-colors text-center group shadow-sm"
-                      onClick={() => setDate(day)}
+                      onClick={() => { setDate(day); runSearch(1, false, { date: day }); }}
                       type="button"
                     >
                       <span className="font-label-sm text-label-sm text-outline uppercase">

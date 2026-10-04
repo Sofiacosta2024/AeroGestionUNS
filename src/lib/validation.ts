@@ -197,6 +197,8 @@ export const flightFareSchema = z.object({
   currency: z.string().trim().length(3).default('ARS'),
 });
 
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 export const flightSearchQuery = paginationQuery.extend({
   origin: iataCode.optional(),
   destination: iataCode.optional(),
@@ -215,6 +217,16 @@ export const flightSearchQuery = paginationQuery.extend({
   sort: z.enum(['departure', 'price', 'punctuality']).default('departure'),
   order: z.enum(['asc', 'desc']).default('asc'),
   onlyDirect: z
+    .enum(['true', 'false'])
+    .transform((v) => v === 'true')
+    .optional(),
+  /** Franja horaria de salida (HH:mm, hora local ART). Solo aplica junto con `date`. */
+  timeFrom: z.string().regex(HHMM, 'Hora con formato HH:mm').optional(),
+  timeTo: z.string().regex(HHMM, 'Hora con formato HH:mm').optional(),
+  /** Cantidad de pasajeros: exige lugares suficientes cuando `available=true`. */
+  passengers: z.coerce.number().int().min(1).max(9).default(1),
+  /** Reglas del buscador del pasajero: solo vuelos reservables, futuros y con lugar. */
+  available: z
     .enum(['true', 'false'])
     .transform((v) => v === 'true')
     .optional(),

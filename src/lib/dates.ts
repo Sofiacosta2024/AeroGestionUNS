@@ -62,6 +62,13 @@ export function localDayRangeUtc(
   return { start, end };
 }
 
+/** Instante UTC de la hora local HH:mm del dia local yyyy-mm-dd. */
+export function localTimeUtc(dateStr: string, hhmm: string, timeZone = DEFAULT_TIMEZONE): Date {
+  const [h, m] = hhmm.split(':').map(Number);
+  const start = localDayRangeUtc(dateStr, timeZone).start;
+  return new Date(start.getTime() + ((h ?? 0) * 60 + (m ?? 0)) * 60_000);
+}
+
 /** Convierte 'yyyy-mm-dd' o un ISO completo a un rango UTC de inclusividad dada. */
 export function toUtcRange(
   from?: string | null,
