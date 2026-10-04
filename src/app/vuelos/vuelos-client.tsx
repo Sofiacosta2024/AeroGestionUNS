@@ -25,6 +25,17 @@ const FLEET_IMG =
 const CABIN_IMG =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuC4ybXDxZWCT78pC3wAMS73Ak287xKNdmQbw8MVEfdsDQ7CBUupAKb0Y_xReJTdTLOuN86EZr8bM4l0F70g7hlxPz2Ys7HrIonCOyowsohbuqtISnkFDVJXjuOK9tvH4Dz_Nwn8IGAVx2kJzXofHANEbODisVrHVv59722gYufGZY0cZEqhvrGnq6WBgAygX-eXIFbxqXQkefS396NJQdsj4uyA75UDj-vZ6cUfUeb-4EVK6d48pVw5';
 
+function Logo() {
+  return (
+    <div className="w-9 h-9 rounded-xl bg-primary ring-1 ring-white/10 flex items-center justify-center shrink-0">
+      <svg className="w-6 h-6 text-[#E11D48]" fill="none" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+        <path d="M9 20.5L25.5 12L21 21.5L29 27L24 28L18 24.5L14 28.5L13.5 24L9 20.5Z" fill="currentColor" />
+        <circle cx="28.5" cy="13.5" fill="#f43f5e" r="2.8" />
+      </svg>
+    </div>
+  );
+}
+
 /** Mismo formato de importes que el HTML original ("$64.200" + etiqueta ARS). */
 const MONEY = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 });
 const money = (n: number) => `$${MONEY.format(n)}`;
@@ -247,11 +258,7 @@ if (slotDef.to) flightQuery.set('timeTo', slotDef.to);
       <header className="fixed top-0 left-0 w-full z-50 bg-primary-container shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
         <div className="min-h-20 w-full px-4 sm:px-space-lg lg:px-margin py-3 lg:py-0 flex flex-wrap items-center justify-between gap-space-sm lg:gap-space-md">
           <div className="flex items-center gap-space-md min-w-0 shrink-0">
-            <img
-              alt="Logotipo corporativo de AeroGestión UNS con fondo Deep Purple #2E1065 y avión estilizado en Electric Magenta #E11D48 con tipografía institucional."
-              className="h-8 w-auto object-contain"
-              src={LOGO}
-            />
+            <Logo />
             <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-space-xs">
                 <span className="font-headline-sm text-headline-sm text-surface-container-lowest leading-none whitespace-nowrap">
@@ -335,8 +342,10 @@ if (slotDef.to) flightQuery.set('timeTo', slotDef.to);
                     {bootstrap.user.role}
                   </span>
                 </div>
-                <img alt="Profile" className="w-8 h-8 rounded-full object-cover" src={AVATAR} />
-              </button>
+                  <span className="w-8 h-8 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center font-label-md text-label-md font-bold">
+                    {bootstrap.user.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()}
+                  </span>             
+               </button>
             ) : (
               <div className="flex items-center gap-space-sm bg-primary/70 p-space-xs pl-space-sm rounded-full">
                 <div className="hidden md:flex flex-col text-right">
@@ -562,7 +571,7 @@ if (slotDef.to) flightQuery.set('timeTo', slotDef.to);
                     {formatFullDate(date)}
                   </span>
                   <span className="font-body-sm text-body-sm text-outline">
-                    {formatWeekday(date)}
+                      {slot === 'MORNING' ? 'Hasta 12:00' : slot === 'AFTERNOON' ? '12:00 a 18:59' : slot === 'NIGHT' ? 'Desde 19:00' : 'Hora de salida'}
                   </span>
                   <input
                     aria-label="Fecha de salida"
