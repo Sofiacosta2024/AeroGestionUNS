@@ -103,6 +103,8 @@ export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap
   const [slot, setSlot] = useState<SlotId>('ALL');
   const [lastQuery, setLastQuery] = useState<SearchSnapshot | null>(null);
   const searchSeq = useRef(0);
+  const departureInputRef = useRef<HTMLInputElement | null>(null);
+  const returnInputRef = useRef<HTMLInputElement | null>(null);
 
   const [flights, setFlights] = useState<FlightCardData[]>(bootstrap.initialFlights);
   const [pagination, setPagination] = useState<FlightPagination>(bootstrap.initialPagination);
@@ -112,6 +114,16 @@ export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap
     const p = f?.prices[0];
     return f && p ? { flightId: f.id, fareId: p.id } : null;
   });
+
+  const updateDepartureDate = (nextDate: string) => {
+    setDate(nextDate);
+
+    if (tripType === 'ROUND_TRIP' && nextDate > returnDate) {
+      setReturnDate(nextDate);
+    }
+
+    runSearch(1, true, { date: nextDate });
+  };
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -567,16 +579,38 @@ if (slotDef.to) flightQuery.set('timeTo', slotDef.to);
                 </Field>
 
                 <Field label="Salida" icon="calendar_today">
-                  <span className="font-label-md text-label-md text-on-surface font-semibold">
-                    {formatFullDate(date)}
-                  </span>
-                  <span className="font-body-sm text-body-sm text-outline">
-                      {slot === 'MORNING' ? 'Hasta 12:00' : slot === 'AFTERNOON' ? '12:00 a 18:59' : slot === 'NIGHT' ? 'Desde 19:00' : 'Hora de salida'}
-                  </span>
+                  <button
+                    className="flex w-full items-center justify-between gap-2 text-left"
+                    onClick={() => {
+                      departureInputRef.current?.showPicker?.();
+                      departureInputRef.current?.click();
+                    }}
+                    type="button"
+                  >
+                    <span className="flex flex-col min-w-0">
+                      <span className="font-label-md text-label-md text-on-surface font-semibold">
+                        {formatFullDate(date)}
+                      </span>
+                      <span className="font-body-sm text-body-sm text-outline">
+                        {slot === 'MORNING'
+                          ? 'Hasta 12:00'
+                          : slot === 'AFTERNOON'
+                            ? '12:00 a 18:59'
+                            : slot === 'NIGHT'
+                              ? 'Desde 19:00'
+                              : 'Hora de salida'}
+                      </span>
+                    </span>
+                    <span className="material-symbols-outlined text-base text-primary">calendar_month</span>
+                  </button>
                   <input
+                    ref={departureInputRef}
                     aria-label="Fecha de salida"
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    onChange={(e) => e.target.value && setDate(e.target.value)}
+                    className="sr-only"
+                    onChange={(e) => {
+                      if (!e.target.value) return;
+                      updateDepartureDate(e.target.value);
+                    }}
                     type="date"
                     value={date}
                   />
@@ -587,17 +621,41 @@ if (slotDef.to) flightQuery.set('timeTo', slotDef.to);
                   icon="event_repeat"
                   dimmed={tripType === 'ONE_WAY'}
                 >
-                  <span className="font-label-md text-label-md text-on-surface font-semibold">
-                    {formatFullDate(returnDate)}
-                  </span>
-                  <span className="font-body-sm text-body-sm text-outline">
-                    {formatWeekday(returnDate)}
-                  </span>
-                  <input
-                    aria-label="Fecha de regreso"
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  <button
+                    className="flex w-full items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60"
                     disabled={tripType === 'ONE_WAY'}
-                    onChange={(e) => e.target.value && setReturnDate(e.target.value)}
+                    onClick={() => {
+                      if (tripType === 'ONE_WAY') return;
+                      returnInputRef.current?.showPicker?.();
+                      returnInputRef.current?.click();
+                    }}
+                    type="button"
+                  >
+                    <span className="flex flex-col min-w-0">
+                      <span className="font-label-md text-label-md text-on-surface font-semibold">
+                        {formatFullDate(returnDate)}
+                      </span>
+                      <span className="font-body-sm text-body-sm text-outline">
+                        {formatWeekday(returnDate)}
+                      </span>
+                    </span>
+                    <span className="material-symbols-outlined text-base text-primary">calendar_month</span>
+                  </button>
+                  <input
+                    ref={returnInputRef}
+                    aria-label="Fecha de regreso"
+                    className="sr-only"
+                    disabled={tripType === 'ONE_WAY'}
+                    min={date}
+                    onChange={(e) => {
+                      if (!e.target.value) return;
+                      const next = e.target.value;
+                      if (next < date) {
+                        setReturnDate(date);
+                        return;
+                      }
+                      setReturnDate(next);
+                    }}
                     type="date"
                     value={returnDate}
                   />
@@ -710,7 +768,9 @@ if (slotDef.to) flightQuery.set('timeTo', slotDef.to);
                     <button
                       key={day}
                       className="flex flex-col items-center justify-center p-space-sm rounded-lg bg-surface-container-lowest hover:bg-surface-container transition-colors text-center group shadow-sm"
-                      onClick={() => { setDate(day); runSearch(1, false, { date: day }); }}
+                      onClick={() => {
+                        updateDepartureDate(day);
+                      }}
                       type="button"
                     >
                       <span className="font-label-sm text-label-sm text-outline uppercase">
