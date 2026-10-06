@@ -85,7 +85,9 @@ export type VuelosBootstrap = {
   initialFlights: FlightCardData[];
   initialPagination: FlightPagination;
   initialWeeklyFares: WeeklyFareDay[];
-  user: { name: string; email: string; role: string } | null;
+  // Cambio RF-01: `isAdmin` permite mostrar el acceso al panel de alta de vuelos solo a
+  // administradores (`role` es la etiqueta visible, no sirve para decidir permisos).
+  user: { name: string; email: string; role: string; isAdmin: boolean } | null;
 };
 
 export function toAirportOption(a: {

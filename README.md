@@ -16,7 +16,7 @@ PostgreSQL y Prisma.
 | Base de datos | PostgreSQL + Prisma 6 |
 | Estilos | Tailwind CSS 3.4 (compilado) con tokens por página |
 | Validación | Zod |
-| Passwords | bcrypt |
+| Autenticación | Clerk + perfiles y roles en Prisma |
 
 ---
 
@@ -24,7 +24,7 @@ PostgreSQL y Prisma.
 
 ```bash
 npm install
-cp .env.example .env      # y completar DATABASE_URL
+cp .env.example .env      # y completar DATABASE_URL, DIRECT_URL y las claves de Clerk
 npm run db:generate
 npm run db:migrate:deploy
 npm run db:seed
@@ -35,6 +35,8 @@ La aplicación queda en `http://localhost:3000`:
 
 - `/login` — portal de autenticación (diseño de `login.html`).
 - `/vuelos` — motor de búsqueda de vuelos (diseño de `vuelos.html`).
+- `/admin/vuelos/nuevo` — alta y publicación de vuelos (RF-01, solo `ADMIN`).
+- `/admin/itinerario` — planilla del día y borradores pendientes (RF-01, solo `ADMIN`).
 - `/` — redirige a `/vuelos` si hay sesión, a `/login` si no.
 
 ### Variables de entorno
@@ -42,12 +44,15 @@ La aplicación queda en `http://localhost:3000`:
 | Variable | Obligatoria | Descripción |
 | --- | --- | --- |
 | `DATABASE_URL` | sí | Conexión PostgreSQL de Prisma (`schema.prisma`, `url = env("DATABASE_URL")`). |
-| `AUTH_SECRET` | en producción | Secreto de la aplicación. |
+| `DIRECT_URL` | sí | Conexión directa a PostgreSQL para migraciones. |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | sí | Clave pública del proyecto Clerk. |
+| `CLERK_SECRET_KEY` | sí | Clave secreta del mismo proyecto Clerk. |
+| `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | sí | `/login`. |
+| `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | sí | `/sign-up`. |
 | `NEXT_PUBLIC_SUPABASE_URL` | no | URL del proyecto Supabase. |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | no | Clave publicable de Supabase. |
-| `DEMO_MODE` | no | Habilita el botón **Acceso demo** del login. **Poner `false` en producción.** |
-
-`AUTH_SECRET` se genera con `openssl rand -base64 32`.
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | no | Clave publicable de Supabase. |
+| `MIN_DEPARTURE_GAP_MINUTES` | no | Minutos mínimos entre dos salidas del mismo aeropuerto (RF-01). Por defecto 20. |
+| `MIN_TURNAROUND_MINUTES` | no | Minutos mínimos entre el aterrizaje de un avión y su siguiente despegue (RF-01). Por defecto 120. |
 
 > `.env` está en `.gitignore`. Nunca versionar credenciales.
 
@@ -71,35 +76,20 @@ La aplicación queda en `http://localhost:3000`:
 
 ## Usuarios de demostración
 
-El seed crea tres usuarios con la contraseña **`AeroGestion2025!`**:
+El seed crea tres perfiles locales sin contraseña. El acceso se realiza con cuentas de Clerk; al ingresar con el mismo email verificado se vincula el perfil.
 
 | Email | Rol | Legajo |
 | --- | --- | --- |
-| `pasajero@uns.edu.ar` | `PASAJERO` | `UNS-LEJ-0000` |
-| `mostrador@uns.edu.ar` | `MOSTRADOR` | `UNS-LEJ-0002` |
+| `pasajero@uns.edu.ar` | `PASAJERO` | `UNS-2025-4417` |
+| `mostrador@uns.edu.ar` | `MOSTRADOR` | `UNS-LEJ-0088` |
 | `admin@uns.edu.ar` | `ADMIN` | `UNS-LEJ-0001` |
 
 El rol jerárquico es `ADMIN` > `MOSTRADOR` > `PASAJERO`; cada endpoint de escritura
 declara el mínimo requerido. Hay una reserva de ejemplo con código `AG-DEMO01`.
 
-Estos datos son de prueba: rotar la contraseña y borrar la reserva antes de usar
-cualquier base que exponga datos reales.
+Configurar los roles `ADMIN`, `MOSTRADOR` o `PASAJERO` en los metadatos públicos de Clerk y exponerlos en el claim de sesión `metadata.role` (por ejemplo, con `"metadata": "{{user.public_metadata}}` en la configuración del token de sesión). Si no se recibe ese claim, el rol es `PASAJERO`.
 
----
-
-## Acceso demo (saltar el login)
-
-La pantalla de login incluye un botón **Acceso demo** que abre sesión con el usuario de
-ejemplo del perfil elegido, sin escribir la contraseña. La contraseña nunca viaja al
-navegador: la sesión se crea en el servidor.
-
-- `GET /api/auth/demo` informa si está habilitado; el botón solo se dibuja si lo está.
-- `POST /api/auth/demo` con `{ "role": "PASAJERO" | "MOSTRADOR" | "ADMIN" }` crea la
-  sesión y deja el evento en `audit_logs` como `LOGIN_DEMO`.
-
-Está activo mientras `DEMO_MODE` no sea `false` (en `.env` queda en `true`). **Es un
-acceso sin autenticar: poné `DEMO_MODE="false"` antes de publicar la aplicación**, o el
-botón desaparecerá y el endpoint responderá `404`.
+Estos datos son de prueba. La integración no ejecuta migraciones ni carga el seed sobre una base compartida.
 
 ---
 
@@ -107,26 +97,27 @@ botón desaparecerá y el endpoint responderá `404`.
 
 ```
 prisma/
-  schema.prisma          18 modelos, 16 enums
-  migrations/            migración inicial
+  schema.prisma          20 modelos, 16 enums
+  migrations/            migración inicial + migraciones de RF-01
   seed.ts                datos de demostración (idempotente)
 src/
   app/
     layout.tsx           layout raíz + fuentes
     page.tsx             redirección raíz
-    login/               portal de autenticación
+    (auth)/              login y registro con Clerk
     vuelos/              motor de búsqueda
-    api/                 33 Route Handlers
+    api/                 39 Route Handlers
   lib/
     api.ts               envoltorio de handlers, errores HTTP y parseo
     audit.ts             auditoría no bloqueante
-    auth.ts              sesiones, bcrypt y RBAC
+    auth.ts              identidad de Clerk, perfiles Prisma y RBAC
     bookings.ts          include/serialización/redacción de reservas
     dates.ts             filtros por día en ART
     fares.ts
     flights.ts           include/serialización de vuelos
     format.ts            importes, horarios y fechas (ART)
     prisma.ts            cliente Prisma singleton
+    scheduling/          programación de vuelos (RF-01): reglas, repositorio y servicio
     validation.ts        schemas Zod
     view-models.ts       formas de datos que cruzan a React
   tailwind (config.ts)   tokens compilados + variables por página
@@ -141,8 +132,9 @@ docs/
 ## Documentación
 
 - [`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md) — capas, sesión, zona horaria, temas.
-- [`docs/API.md`](docs/API.md) — los 35 endpoints, convenciones y ejemplos.
-- [`docs/MODELO-DATOS.md`](docs/MODELO-DATOS.md) — las 18 tablas, sus claves y decisiones.
+- [`docs/API.md`](docs/API.md) — los endpoints, convenciones y ejemplos.
+- [`docs/MODELO-DATOS.md`](docs/MODELO-DATOS.md) — las 20 tablas, sus claves y decisiones.
+- [`docs/RF-01-ALTA-VUELOS.md`](docs/RF-01-ALTA-VUELOS.md) — qué se hizo en RF-01 (alta y publicación de vuelos) y qué tienen que saber los demás subgrupos.
 
 ---
 

@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { daysInclusive } from '@/lib/scheduling/calendar';
+import { MAX_VALIDITY_DAYS } from '@/lib/scheduling/config';
 
 const trimmed = (max: number) => z.string().trim().max(max);
 const required = (max: number) => trimmed(max).min(1, 'Este campo es obligatorio');
@@ -148,7 +150,9 @@ const routeBase = z.object({
   originAirportId: iataCode,
   destinationAirportId: iataCode,
   distanceKm: z.coerce.number().int().min(1).max(20_000).optional().nullable(),
-  durationMinutes: z.coerce.number().int().min(1).max(1500).optional().nullable(),
+  // Cambio RF-01: antes era opcional. Ahora es obligatoria porque la llegada de cada
+  // vuelo se calcula con ella (salida + duracion de la ruta).
+  durationMinutes: z.coerce.number().int().min(1).max(1500),
   isActive: z.coerce.boolean().default(true),
 });
 
@@ -176,11 +180,9 @@ const flightBase = z.object({
   notes: trimmed(255).optional().nullable(),
 });
 
-export const flightSchema = flightBase.refine(
-  (d) => d.arrivalAt.getTime() > d.departureAt.getTime(),
-  { message: 'La llegada debe ser posterior a la salida', path: ['arrivalAt'] },
-);
-
+// Cambio RF-01: el alta (`POST /api/flights`) ya no usa este schema sino
+// `singleFlightSchema` (codigo y llegada los calcula el sistema). `flightBase` queda
+// para la edicion de un vuelo existente.
 export const flightUpdateSchema = flightBase
   .partial()
   .refine((d) => Object.keys(d).length > 0, { message: 'No hay campos para actualizar' });
@@ -198,6 +200,82 @@ export const flightFareSchema = z.object({
 });
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+// ---------------------------------------------------------------------------
+// PROGRAMACION DE VUELOS (RF-01)
+// ---------------------------------------------------------------------------
+
+/** `yyyy-mm-dd` que ademas sea una fecha real (rechaza 2026-02-31). */
+const calendarDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha invalida (formato YYYY-MM-DD)')
+  // Zod corre este refine aunque falle el regex: hay que tolerar textos que no son fechas.
+  .refine((v) => {
+    const parsed = new Date(`${v}T00:00:00Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(v);
+  }, 'Fecha inexistente');
+
+const timeOfDay = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Hora invalida (formato HH:MM)');
+
+export const classOfferSchema = z.object({
+  fareId: z.string().cuid('Clase invalida'),
+  price: z.coerce.number().positive('El precio debe ser mayor a 0').max(99_999_999),
+  seats: z.coerce.number().int().min(1, 'Cada clase necesita al menos 1 asiento').max(1000),
+});
+
+const classOffers = z
+  .array(classOfferSchema)
+  .min(1, 'Falta cargar asientos y precio de las clases')
+  .max(10)
+  .refine((offers) => new Set(offers.map((o) => o.fareId)).size === offers.length, 'Hay clases repetidas');
+
+/** Cronograma de RF-01: un vuelo unico es un cronograma con validFrom = validTo. */
+export const flightScheduleSchema = z
+  .object({
+    routeId: z.string().cuid('Ruta invalida'),
+    aircraftId: z.string().cuid('Avion invalido'),
+    validFrom: calendarDate,
+    validTo: calendarDate,
+    weekdays: z
+      .array(z.number().int().min(0).max(6))
+      .min(1, 'Debe elegir al menos un dia de operacion')
+      .max(7)
+      .transform((days) => [...new Set(days)].sort((a, b) => a - b)),
+    departureTime: timeOfDay,
+    fares: classOffers,
+  })
+  .refine((d) => d.validFrom <= d.validTo, {
+    message: 'La fecha de fin no puede ser anterior a la de inicio',
+    path: ['validTo'],
+  })
+  .refine((d) => daysInclusive(d.validFrom, d.validTo) <= MAX_VALIDITY_DAYS, {
+    message: `La vigencia no puede superar ${MAX_VALIDITY_DAYS} dias`,
+    path: ['validTo'],
+  });
+
+export type ScheduleInput = z.output<typeof flightScheduleSchema>;
+
+export const flightScheduleCreateSchema = z.intersection(
+  flightScheduleSchema,
+  z.object({ publish: z.boolean().default(false) }),
+);
+
+/** Alta de un vuelo puntual por `POST /api/flights` (mismas reglas que el panel). */
+export const singleFlightSchema = z.object({
+  routeId: z.string().cuid('Ruta invalida'),
+  aircraftId: z.string().cuid('Avion invalido'),
+  date: calendarDate,
+  departureTime: timeOfDay,
+  fares: classOffers,
+});
+
+export type SingleFlightInput = z.output<typeof singleFlightSchema>;
+
+export const scheduleListQuery = paginationQuery.extend({
+  status: z.enum(['DRAFT', 'PUBLISHED']).optional(),
+});
+
+export const itineraryQuery = z.object({ date: calendarDate });
 
 export const flightSearchQuery = paginationQuery.extend({
   origin: iataCode.optional(),

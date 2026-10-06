@@ -29,8 +29,12 @@ export class ApiError extends Error {
   static notFound(msg = 'Recurso no encontrado') {
     return new ApiError(404, msg, 'NOT_FOUND');
   }
-  static conflict(msg: string) {
-    return new ApiError(409, msg, 'CONFLICT');
+  /**
+   * `details` es opcional (agregado en RF-01): permite devolver, por ejemplo, la lista
+   * de fechas que chocan al programar vuelos. Los llamados existentes no cambian.
+   */
+  static conflict(msg: string, details?: unknown) {
+    return new ApiError(409, msg, 'CONFLICT', details);
   }
   static unprocessable(msg: string, details?: unknown) {
     return new ApiError(422, msg, 'UNPROCESSABLE', details);

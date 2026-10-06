@@ -16,11 +16,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <head>
           <link rel="preconnect" href="https://fonts.googleapis.com" />
           <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-          {/* Mismas fuentes que usaba el HTML original: Plus Jakarta Sans, Space Grotesk
-              y los iconos Material Symbols Outlined. */}
+          {/* Fuentes del buscador y del panel: Plus Jakarta Sans, Space Grotesk
+              y Playfair Display. */}
           <link
             rel="stylesheet"
-            href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Space+Grotesk:wght@600&display=swap"
+            href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@600&display=swap"
           />
           <link
             rel="stylesheet"

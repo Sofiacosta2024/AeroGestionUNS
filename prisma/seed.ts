@@ -114,27 +114,33 @@ async function main() {
 
   // -------------------------------------------------------------------------
   // 2. Tarifas (catalogo)
+  //
+  // RF-01: cada tarifa activa es una clase. `cabinClass` es la cabina fisica donde se
+  // sienta el pasajero: Economy y Economy Premium comparten la cabina ECONOMY y
+  // Primera Clase tiene la suya (FIRST).
   // -------------------------------------------------------------------------
   const fares = [
     {
       code: 'ECON-FLEX',
-      name: 'Economy Flex',
+      name: 'Economy Premium',
       cabinClass: CabinClass.ECONOMY,
       basePrice: 64200,
+      // Pendiente: kg de carry-on y de bodega de Economy Premium (aun sin definir).
       carryOnKg: 8,
       checkedBagKg: 0,
       changeAllowed: true,
-      seatSelection: false,
+      seatSelection: true,
       refundable: false,
       benefits: [
-        'luggage|Equipaje de mano 8kg',
+        'luggage|Carry-on + valija en bodega',
+        'airline_seat_recline_extra|Eleccion de asiento sin cargo',
         'event|Cambio sin penalidad',
       ],
     },
     {
       code: 'UNS-CORP',
-      name: 'UNS Corporativo',
-      cabinClass: CabinClass.BUSINESS,
+      name: 'Primera Clase',
+      cabinClass: CabinClass.FIRST,
       basePrice: 138000,
       carryOnKg: 10,
       checkedBagKg: 23,
@@ -145,15 +151,17 @@ async function main() {
     },
     {
       code: 'ECON-BASIC',
-      name: 'Economy Basica',
+      name: 'Economy',
       cabinClass: CabinClass.ECONOMY,
       basePrice: 52900,
-      carryOnKg: 7,
+      // Solo mochila u objeto personal; elegir asiento tiene cargo (lo cobra el flujo de compra).
+      carryOnKg: 0,
       checkedBagKg: 0,
       changeAllowed: false,
       seatSelection: false,
       refundable: false,
-      benefits: ['luggage|Equipaje de mano 7kg'],
+      benefits: ['backpack|Solo mochila u objeto personal'],
+      isActive: true,
     },
   ];
 
@@ -184,7 +192,8 @@ async function main() {
       registration: 'LV-FPS',
       model: 'Embraer E190',
       manufacturer: 'Embraer',
-      seatCount: 114,
+      // 28 filas x 4 asientos: coincide con el mapa que se genera abajo.
+      seatCount: 112,
       layout: '2-2 sin asiento al medio',
       hasWifi: false,
       hasUsbPower: true,
@@ -247,12 +256,12 @@ async function main() {
     }[] = [];
     for (let r = 1; r <= rows; r++) {
       for (const col of columns) {
-        const isBusiness = r === 1;
+        const isFirstClass = r === 1;
         seats.push({
           aircraftId: aircraft.id,
           rowNumber: r,
           columnLetter: col,
-          cabinClass: isBusiness ? CabinClass.BUSINESS : CabinClass.ECONOMY,
+          cabinClass: isFirstClass ? CabinClass.FIRST : CabinClass.ECONOMY,
           type: col === columns[0] || col === columns[columns.length - 1] ? SeatType.WINDOW : SeatType.AISLE,
           isExitRow: r === rows,
         });
@@ -283,6 +292,14 @@ async function main() {
   // 5. Vuelos comerciales (los 3 servicios que muestra el HTML + extras)
   // -------------------------------------------------------------------------
   const routeByCode = new Map((await prisma.route.findMany()).map((r) => [r.code, r] as const));
+
+// Capacidad fisica por cabina, compartida con las reglas de RF-01.
+const seatTotals = await prisma.seat.groupBy({
+  by: ['aircraftId', 'cabinClass'],
+  _count: { _all: true },
+});
+const seatsIn = (aircraftId: string, cabinClass: CabinClass) =>
+  seatTotals.find((seat) => seat.aircraftId === aircraftId && seat.cabinClass === cabinClass)?._count._all ?? 0;
 
 // `every`: se genera un vuelo cada N dias, asi hay dias sin oferta para probar "sin resultados".
 // (No se modela la rotacion real de las aeronaves: solo que no se pisen en el mismo horario.)
@@ -327,19 +344,21 @@ for (let d = 0; d < DAYS_AHEAD; d++) {
     });
 
     // Los viernes la salida de las 19:15 queda con pocos lugares (prueba del filtro de pasajeros)
-    const flexSeats = weekday === 5 && s.h === 19 ? 3 : 132;
+    const flexCapacity = Math.min(132, seatsIn(aircraftId, CabinClass.ECONOMY));
+    const corpSeats = Math.min(12, seatsIn(aircraftId, CabinClass.FIRST));
+    const flexSeats = weekday === 5 && s.h === 19 ? Math.min(3, flexCapacity) : flexCapacity;
     const flexPrice = priced(s.flex, dateStr);
     const corpPrice = priced(s.corp, dateStr);
 
     await prisma.flightFare.upsert({
       where: { flightId_fareId: { flightId: flight.id, fareId: econFlex.id } },
-      update: { price: flexPrice, availableSeats: flexSeats },
-      create: { flightId: flight.id, fareId: econFlex.id, price: flexPrice, availableSeats: flexSeats },
+      update: { price: flexPrice, availableSeats: flexSeats, seatCapacity: flexCapacity },
+      create: { flightId: flight.id, fareId: econFlex.id, price: flexPrice, availableSeats: flexSeats, seatCapacity: flexCapacity },
     });
     await prisma.flightFare.upsert({
       where: { flightId_fareId: { flightId: flight.id, fareId: unsCorp.id } },
-      update: { price: corpPrice, availableSeats: 12 },
-      create: { flightId: flight.id, fareId: unsCorp.id, price: corpPrice, availableSeats: 12 },
+      update: { price: corpPrice, availableSeats: corpSeats, seatCapacity: corpSeats },
+      create: { flightId: flight.id, fareId: unsCorp.id, price: corpPrice, availableSeats: corpSeats, seatCapacity: corpSeats },
     });
     flightCount++;
   }

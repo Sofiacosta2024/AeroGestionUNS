@@ -126,6 +126,8 @@ export default async function VuelosPage() {
           name: [userRow.firstName, userRow.lastName].filter(Boolean).join(' ') || userRow.email,
           email: userRow.email,
           role: ROLE_LABEL[userRow.role] ?? userRow.role,
+          // Cambio RF-01: habilita el enlace al panel de alta de vuelos.
+          isAdmin: userRow.role === 'ADMIN',
         }
       : null,
   };

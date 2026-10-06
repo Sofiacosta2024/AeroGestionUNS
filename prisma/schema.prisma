@@ -121,6 +121,12 @@ enum BoardingPassStatus {
   CANCELLED
 }
 
+/// Estado de un cronograma de RF-01: los vuelos se generan recien al publicar.
+enum ScheduleStatus {
+  DRAFT
+  PUBLISHED
+}
+
 // ---------------------------------------------------------------------------
 // IDENTIDAD Y ACCESO
 // ---------------------------------------------------------------------------
@@ -146,6 +152,7 @@ model User {
   sessions   Session[]
   bookings   Booking[]
   auditLogs  AuditLog[]
+  flightSchedules FlightSchedule[]
 
   @@index([role])
   @@index([isActive])
@@ -230,8 +237,9 @@ model Aircraft {
   createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  seats   Seat[]
-  flights Flight[]
+  seats           Seat[]
+  flights         Flight[]
+  flightSchedules FlightSchedule[]
 
   @@index([baseAirportId])
   @@index([status])
@@ -265,15 +273,18 @@ model Route {
   destinationAirportId String  @map("destination_airport_id") @db.Char(3)
   destinationAirport Airport  @relation("RouteDestination", fields: [destinationAirportId], references: [iataCode], onDelete: Restrict)
   distanceKm         Int?     @map("distance_km")
-  durationMinutes    Int?     @map("duration_minutes")
+  /// Obligatoria: la hora de llegada de cada vuelo se calcula con ella (RF-01)
+  durationMinutes    Int      @map("duration_minutes")
   isActive           Boolean  @default(true) @map("is_active")
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  flights     Flight[]
-  weeklyFares WeeklyFare[]
+  flights         Flight[]
+  weeklyFares     WeeklyFare[]
+  flightSchedules FlightSchedule[]
 
-  @@index([originAirportId, destinationAirportId])
+  /// Un par origen-destino existe una sola vez en el catalogo (RF-01)
+  @@unique([originAirportId, destinationAirportId])
   @@index([isActive])
   @@map("routes")
 }
@@ -295,16 +306,22 @@ model Flight {
   /// Etiquetas libres mostradas en la tarjeta (ej. "VUELO NOCTURNO REGULAR")
   tags           String[]     @default([])
   notes          String?      @db.VarChar(255)
+  /// Cronograma que genero el vuelo (null en los vuelos cargados antes de RF-01)
+  scheduleId     String?      @map("schedule_id")
+  schedule       FlightSchedule? @relation(fields: [scheduleId], references: [id], onDelete: Restrict)
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   fares         FlightFare[]
   bookingFlights BookingFlight[]
 
+  /// Una aeronave no puede tener dos salidas en el mismo instante (RF-01, factibilidad)
+  @@unique([aircraftId, departureAt])
   @@index([routeId, departureAt])
   @@index([departureAt])
   @@index([status])
   @@index([aircraftId])
+  @@index([scheduleId])
   @@map("flights")
 }
 
@@ -331,6 +348,7 @@ model Fare {
 
   flightFares   FlightFare[]
   bookingFlights BookingFlight[]
+  scheduleFares FlightScheduleFare[]
 
   @@index([isActive])
   @@map("fares")
@@ -345,11 +363,66 @@ model FlightFare {
   fare           Fare    @relation(fields: [fareId], references: [id], onDelete: Restrict)
   price          Decimal @db.Decimal(12, 2)
   availableSeats Int     @default(150) @map("available_seats")
+  /// Asientos ofrecidos al publicar; availableSeats es el remanente que descuentan las reservas.
+  /// Null solo en filas creadas por codigo anterior a RF-01.
+  seatCapacity   Int?    @map("seat_capacity")
   currency       String  @default("ARS") @db.Char(3)
 
   @@unique([flightId, fareId])
   @@index([fareId])
   @@map("flight_fares")
+}
+
+// ---------------------------------------------------------------------------
+// PROGRAMACION DE VUELOS (RF-01)
+// ---------------------------------------------------------------------------
+
+/// Cronograma cargado por el administrador. Un vuelo unico es un cronograma con
+/// validFrom = validTo. Mientras esta en DRAFT no existen vuelos: se generan al publicar,
+/// asi el buscador nunca ve borradores.
+model FlightSchedule {
+  id            String         @id @default(cuid())
+  routeId       String         @map("route_id")
+  route         Route          @relation(fields: [routeId], references: [id], onDelete: Restrict)
+  aircraftId    String         @map("aircraft_id")
+  aircraft      Aircraft       @relation(fields: [aircraftId], references: [id], onDelete: Restrict)
+  /// Primer y ultimo dia de vigencia, en hora ART (columnas date, sin hora)
+  validFrom     DateTime       @map("valid_from") @db.Date
+  validTo       DateTime       @map("valid_to") @db.Date
+  /// Dias de operacion: 0 = domingo ... 6 = sabado
+  weekdays      Int[]
+  /// Hora de salida local ART, formato HH:MM
+  departureTime String         @map("departure_time") @db.VarChar(5)
+  status        ScheduleStatus @default(DRAFT)
+  createdById   String?        @map("created_by_id")
+  createdBy     User?          @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  publishedAt   DateTime?      @map("published_at") @db.Timestamptz(3)
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  fares   FlightScheduleFare[]
+  flights Flight[]
+
+  @@index([status])
+  @@index([routeId])
+  @@index([aircraftId])
+  @@map("flight_schedules")
+}
+
+/// Precio y asientos por clase de un cronograma; se copian a flight_fares al publicar.
+model FlightScheduleFare {
+  id         String         @id @default(cuid())
+  scheduleId String         @map("schedule_id")
+  schedule   FlightSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  fareId     String         @map("fare_id")
+  fare       Fare           @relation(fields: [fareId], references: [id], onDelete: Restrict)
+  price      Decimal        @db.Decimal(12, 2)
+  seats      Int
+  currency   String         @default("ARS") @db.Char(3)
+
+  @@unique([scheduleId, fareId])
+  @@index([fareId])
+  @@map("flight_schedule_fares")
 }
 
 /// Precio de una ruta por dia -> alimenta el "Calendario Semanal de Tarifas"

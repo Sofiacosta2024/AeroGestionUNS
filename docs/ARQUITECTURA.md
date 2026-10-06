@@ -108,6 +108,28 @@ sesión, así que conocerlo no puede dar acceso a datos nominales:
   reservar, pero los nombres de los pasajeros asignados solo se devuelven a Operations.
   El campo `occupied` alcanza para elegir butaca.
 
+## Programación de vuelos (RF-01)
+
+`src/lib/scheduling/` separa las reglas del acceso a datos:
+
+- **Reglas puras** (no tocan la base ni el reloj): `calendar.ts` (fechas de operación y
+  hora ART → UTC), `conflicts.ts` (salidas pasadas, margen entre salidas del mismo
+  aeropuerto, rotación mínima del avión) y `capacity.ts` (asientos y precio por clase, con tope por
+  cabina).
+- **`repository.ts`**: las consultas y escrituras con Prisma. Recibe el cliente o la
+  transacción para que el servicio decida el alcance transaccional.
+- **`service.ts`**: los casos de uso (chequear, guardar borrador, editar, publicar,
+  descartar, alta puntual). Toda escritura vuelve a validar dentro de la transacción.
+- **`itinerary.ts`**: la planilla del día (consulta de solo lectura).
+
+Los Route Handlers de `/api/flight-schedules` y `/api/itinerary` solo validan la
+entrada, exigen el rol y llaman al servicio. `POST /api/flights` usa el mismo servicio, así
+las reglas no están duplicadas.
+
+La publicación toma un lock de transacción de Postgres (`pg_advisory_xact_lock`): dos
+publicaciones simultáneas no pueden validar la misma franja a la vez. Es compatible con el
+pooler de Neon porque se libera al terminar la transacción.
+
 ## Decisiones y límites conocidos
 
 - **Sin pasarela de pago**: `POST /api/bookings/:code/payments` marca el pago como
