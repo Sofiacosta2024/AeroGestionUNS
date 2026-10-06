@@ -7,7 +7,7 @@ import { useClerk } from '@clerk/nextjs';
 const LINKS = [
   { href: '/admin/vuelos/nuevo', label: 'Alta de vuelos' },
   { href: '/admin/itinerario', label: 'Planilla del día' },
-  { href: '/vuelos', label: 'Buscar vuelos' },
+  { href: '/vuelos', label: 'Volver a los vuelos' },
 ] as const;
 
 const LINK_BASE = 'shrink-0 px-space-md py-space-sm rounded-lg font-label-lg text-label-lg transition-colors';

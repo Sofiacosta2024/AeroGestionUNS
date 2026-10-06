@@ -74,11 +74,8 @@ const PENDING_SECTIONS: { path: string; label: string; short: string }[] = [
   { path: 'check-in-online', label: 'Check-in Online', short: 'Check-in' },
 ];
 
-/**
- * Cambio RF-01: "Alta de Vuelos [Admin]" ya no esta en construccion. Lleva al panel de
- * alta y publicacion y solo se muestra a administradores.
- */
-const ADMIN_SECTION = { href: '/admin/vuelos/nuevo', label: 'Alta de Vuelos [Admin]', short: 'Admin' };
+/** Acceso al panel, visible solo para cuentas con permisos de administrador. */
+const ADMIN_SECTION = { href: '/admin', label: 'Ir a la pantalla de admin', short: 'Ir a admin' };
 
 type Selection = { flightId: string; fareId: string };
 
@@ -323,7 +320,7 @@ if (slotDef.to) flightQuery.set('timeTo', slotDef.to);
             ))}
             {bootstrap.user?.isAdmin && (
               <a
-                className="px-space-md py-space-sm rounded-lg font-label-lg text-label-lg text-primary-fixed-dim hover:bg-primary hover:text-on-primary transition-colors"
+                className="px-space-md py-space-sm rounded-lg font-label-lg text-label-lg bg-primary text-primary-fixed-dim hover:bg-secondary hover:text-on-secondary transition-colors"
                 href={ADMIN_SECTION.href}
               >
                 {ADMIN_SECTION.label}
@@ -416,7 +413,7 @@ if (slotDef.to) flightQuery.set('timeTo', slotDef.to);
             ))}
             {bootstrap.user?.isAdmin && (
               <a
-                className="shrink-0 px-3 py-1.5 rounded-lg font-label-md text-label-md text-primary-fixed-dim bg-primary/60"
+                className="shrink-0 px-3 py-1.5 rounded-lg font-label-md text-label-md text-primary-fixed-dim bg-primary hover:bg-secondary hover:text-on-secondary transition-colors"
                 href={ADMIN_SECTION.href}
               >
                 {ADMIN_SECTION.short}
