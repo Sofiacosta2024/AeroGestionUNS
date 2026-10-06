@@ -5,7 +5,9 @@ import { useEffect, useRef, useState } from 'react';
 
 type Role = 'PASAJERO' | 'MOSTRADOR' | 'ADMIN';
 
-/** Mismo contenido que el <script> original de login.html. */
+/** Mismo contenido que el <script> original de login.html.
+ * falta sacar botón demo si no está habilitado, y mostrar el hint del perfil seleccionado.
+ */
 const ROLE_DATA: Record<
   Role,
   { hint: string; label: string; selectorRole: string; icon: string; name: string }
