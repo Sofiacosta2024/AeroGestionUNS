@@ -1,11 +1,11 @@
 export default function AuthShell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="w-full max-w-md">
+    <main className="w-full max-w-[536px]">
       <div className="flex flex-col w-full items-center justify-center relative">
         <div className="absolute -top-32 -left-20 w-80 h-80 rounded-full bg-purple-300 opacity-40 blur-3xl pointer-events-none" />
         <div className="absolute -bottom-28 -right-20 w-96 h-96 rounded-full bg-pink-200 opacity-40 blur-3xl pointer-events-none" />
 
-        <div className="w-full max-w-md bg-surface-container-lowest rounded-2xl shadow-xl shadow-purple-950/5 p-5 sm:p-8 relative z-10 transition-all duration-300 border border-slate-100">
+        <div className="w-full bg-surface-container-lowest rounded-2xl shadow-xl shadow-purple-950/5 p-5 sm:p-10 relative z-10 transition-all duration-300 border border-slate-100">
           <div className="flex items-center justify-between pb-6">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-[#2E1065] flex items-center justify-center shadow-md shadow-[#2E1065]/20 shrink-0">
@@ -42,7 +42,7 @@ export default function AuthShell({ children }: { children: React.ReactNode }) {
             </span>
           </div>
 
-          <div className="mb-5 inline-flex items-center justify-center w-full px-3 py-1.5 rounded-lg bg-surface-container-low text-on-surface-variant font-label-md text-label-md text-center leading-snug">
+          <div className="mb-6 inline-flex items-center justify-center w-full px-3 py-2.5 rounded-lg bg-[#eef3ff] text-on-surface-variant font-label-md text-label-md text-center leading-snug">
             <span className="material-symbols-outlined text-sm mr-1.5 text-[#E11D48]">
               verified_user
             </span>

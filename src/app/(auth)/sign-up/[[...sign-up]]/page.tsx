@@ -6,7 +6,7 @@ export default function SignUpPage() {
   return (
     <AuthShell>
       <SignUp routing="path" path="/sign-up" signInUrl="/login"
-        fallbackRedirectUrl="/vuelos" appearance={clerkAppearance} />
+        forceRedirectUrl="/" appearance={clerkAppearance} />
     </AuthShell>
   );
 }
