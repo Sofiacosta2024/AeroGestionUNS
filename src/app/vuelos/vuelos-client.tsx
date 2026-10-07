@@ -120,7 +120,11 @@ export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap
     return f && p ? { flightId: f.id, fareId: p.id } : null;
   });
 
+  const minDepartureDate = new Date().toISOString().slice(0, 10);
+
   const updateDepartureDate = (nextDate: string) => {
+    if (nextDate < minDepartureDate) return;
+
     setDate(nextDate);
 
     if (tripType === 'ROUND_TRIP' && nextDate > returnDate) {
@@ -628,6 +632,7 @@ if (slotDef.to) flightQuery.set('timeTo', slotDef.to);
                     ref={departureInputRef}
                     aria-label="Fecha de salida"
                     className="sr-only"
+                    min={minDepartureDate}
                     onChange={(e) => {
                       if (!e.target.value) return;
                       updateDepartureDate(e.target.value);
