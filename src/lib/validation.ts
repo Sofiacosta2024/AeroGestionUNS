@@ -416,12 +416,17 @@ export const checkInSchema = z.object({
 });
 
 export const paymentSchema = z.object({
-  method: z.enum(['CREDIT_CARD', 'DEBIT_CARD', 'TRANSFER', 'CASH', 'WALLET']),
-  amount: money.optional(),
-  currency: z.string().trim().length(3).default('ARS'),
-  status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'REFUNDED']).default('PENDING'),
-  transactionRef: trimmed(64).optional().nullable(),
-  installments: z.coerce.number().int().min(1).max(24).optional().nullable(),
+  cardNumber: z.string().regex(/^\d{16}$/, 'La tarjeta debe tener 16 números'),
+  cardholder: z.string().trim().min(2, 'Ingrese el nombre del titular').max(100),
+  expiry: z.string().regex(/^(0[1-9]|1[0-2])\/\d{2}$/, 'Ingrese MM/AA').refine((value) => {
+    const month = Number(value.slice(0, 2));
+    const year = Number(value.slice(3, 5));
+    const now = new Date();
+    return 2000 + year > now.getUTCFullYear() || (2000 + year === now.getUTCFullYear() && month >= now.getUTCMonth() + 1);
+  }, 'La tarjeta está vencida'),
+  cvv: z.string().regex(/^\d{3,4}$/, 'El CVV debe tener 3 o 4 números'),
+  contactEmail: z.string().trim().toLowerCase().email('Correo inválido').max(160),
+  installments: z.number().int().refine((n) => [1, 3, 6].includes(n), 'Seleccione 1, 3 o 6 cuotas').default(1),
 });
 
 export const baggageSchema = z.object({
