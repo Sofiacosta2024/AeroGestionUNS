@@ -92,12 +92,9 @@ export default function LoginForm() {
         </button>
       </form>
       <div className="flex items-center gap-4 text-center text-xs font-bold uppercase tracking-wider text-outline">
-        <span className="h-px flex-1 bg-blue-100" /><span>O continuar con</span><span className="h-px flex-1 bg-blue-100" />
+        <span className="h-px flex-1 bg-blue-100" /><span>O</span><span className="h-px flex-1 bg-blue-100" />
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <Link href="/login/clerk" className="rounded-xl bg-[#eef3ff] px-3 py-4 text-center text-sm font-semibold text-on-surface hover:bg-blue-100">Otras opciones de ingreso</Link>
-        <Link href="/sign-up" className="rounded-xl bg-[#eef3ff] px-3 py-4 text-center text-sm font-semibold text-on-surface hover:bg-blue-100">Crear cuenta</Link>
-      </div>
+      <Link href="/sign-up" className="block rounded-xl bg-[#eef3ff] px-3 py-4 text-center text-sm font-semibold text-on-surface hover:bg-blue-100">Crear cuenta</Link>
     </div>
   );
 }
