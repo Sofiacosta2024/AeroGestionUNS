@@ -405,6 +405,29 @@
   line-height: 1.6;
   margin: 16px 0;
 }
+.countdown-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #f0f4ff;
+  border: 1px solid #c9d8ff;
+  color: #170040;
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  font-size: 13px;
+}
+.countdown-banner.urgent {
+  background: #fff0f3;
+  border-color: #fca5b3;
+  color: #ab0030;
+}
+.countdown-timer-value {
+  font-family: monospace;
+  font-weight: 800;
+  font-size: 16px;
+  color: #ed1549;
+}
 .success-alert {
   background: #edf9f2;
   color: #17623b;

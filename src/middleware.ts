@@ -2,11 +2,17 @@ import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 
 const isPublic = createRouteMatcher([
+  '/',
+  '/vuelos(.*)',
+  '/pago(.*)',
   '/login(.*)',
   '/sign-up(.*)',
   '/reserva(.*)',
   '/api/reservas/consulta',
   '/api/webhooks(.*)',
+  '/api/flights(.*)',
+  '/api/bookings(.*)',
+  '/api/health',
 ]);
 const isAdmin = createRouteMatcher(['/admin(.*)', '/api/admin(.*)']);
 const isMostrador = createRouteMatcher(['/mostrador(.*)', '/api/mostrador(.*)']);

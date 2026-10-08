@@ -10,6 +10,7 @@ export const dynamic = 'force-dynamic';
 type Ctx = { params: Promise<{ id: string }> };
 
 const listQuery = z.object({
+  flightId: z.string().optional(),
   cabinClass: z.enum(['ECONOMY', 'PREMIUM', 'BUSINESS', 'FIRST']).optional(),
   type: z.enum(['WINDOW', 'AISLE', 'MIDDLE', 'EXIT']).optional(),
   free: z
@@ -37,6 +38,17 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
   });
   if (!aircraft) throw ApiError.notFound('Aeronave no encontrada');
 
+  const activeLocks = q.flightId
+    ? await prisma.seatLock.findMany({
+        where: {
+          flightId: q.flightId,
+          expiresAt: { gt: new Date() },
+        },
+        select: { seatId: true },
+      })
+    : [];
+  const lockedSeatIds = new Set(activeLocks.map((l) => l.seatId));
+
   const where = {
     aircraftId: id,
     ...(q.cabinClass ? { cabinClass: q.cabinClass } : {}),
@@ -44,8 +56,11 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
     ...(q.free === undefined
       ? {}
       : q.free
-        ? { bookingPassengers: { none: {} } }
-        : { bookingPassengers: { some: {} } }),
+        ? {
+            bookingPassengers: { none: {} },
+            id: { notIn: Array.from(lockedSeatIds) },
+          }
+        : {}),
   };
 
   const orderBy = [{ rowNumber: 'asc' as const }, { columnLetter: 'asc' as const }];
@@ -78,7 +93,8 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
     aircraft,
     data: seats.map((s) => ({
       ...s,
-      occupied: s.bookingPassengers.length > 0,
+      occupied: s.bookingPassengers.length > 0 || lockedSeatIds.has(s.id),
+      locked: lockedSeatIds.has(s.id),
       bookingPassengers: s.bookingPassengers,
     })),
   });

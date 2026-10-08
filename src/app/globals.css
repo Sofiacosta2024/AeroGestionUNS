@@ -9,6 +9,7 @@
   body {
     margin: 0;
     padding: 0;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
 
   body {
@@ -113,6 +114,7 @@
 /* Tokens del tema de vuelos.html                                      */
 /* ------------------------------------------------------------------ */
 .theme-vuelos {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --ag-color-background: #f8f9ff;
   --ag-color-secondary: #ba0035;
   --ag-color-surface: #f8f9ff;
@@ -156,4 +158,43 @@
   --ag-fs-headline-xl-mobile-lh: 38px;
   --ag-fs-headline-xl-mobile-ls: -0.02em;
   --ag-fs-headline-xl-mobile-fw: 800;
+}
+
+.theme-vuelos,
+.theme-vuelos button,
+.theme-vuelos input,
+.theme-vuelos select,
+.theme-vuelos textarea,
+.theme-vuelos span:not([class*="material-symbols"]),
+.theme-vuelos p,
+.theme-vuelos h1,
+.theme-vuelos h2,
+.theme-vuelos h3,
+.theme-vuelos div,
+.theme-vuelos a {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.theme-vuelos .font-mono,
+.theme-vuelos [class*="font-mono"],
+.theme-vuelos [class*="font-code-telemetry"] {
+  font-family: 'Space Grotesk', ui-monospace, SFMono-Regular, Menlo, monospace !important;
+}
+
+.material-symbols-outlined,
+[class*="material-symbols"],
+.theme-vuelos .material-symbols-outlined,
+.theme-vuelos [class*="material-symbols"] {
+  font-family: 'Material Symbols Outlined' !important;
+  font-weight: normal !important;
+  font-style: normal !important;
+  line-height: 1 !important;
+  letter-spacing: normal !important;
+  text-transform: none !important;
+  display: inline-block !important;
+  white-space: nowrap !important;
+  word-wrap: normal !important;
+  direction: ltr !important;
+  -webkit-font-feature-settings: 'liga' !important;
+  -webkit-font-smoothing: antialiased !important;
 }
