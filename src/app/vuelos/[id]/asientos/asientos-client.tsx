@@ -12,41 +12,114 @@ const AVATAR =
 const DESTINATION_IMG =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCLDPhxkwdDvpLHuGzES1myvcdH258uoB2RRlHnZFL3B7dQqE0xT7sbyFIng7ClMZ-yqFZIU0yIy7gAhjYnUbKF8wrWFEwWGczPInNzM_Y6fzxH2vTHA1q7e7eBDb-DaZA7IVnuNQ_XMnOZOOz5bznlTseZved6oT30VJkdCMly2qQwMPEPaPsM4N0OvFbwmzuMtXwW20Qn--T1QbkDKjsSqqRqeVXJr-7FcjUmEs0caK4iJgQeCX_F';
 
-type AsientosClientProps = {
-  flight: {
+export type FareInfo = {
+  id: string;
+  code?: string;
+  name: string;
+  cabinClass: CabinClass;
+  seatSelection?: boolean;
+  price: number;
+  currency: string;
+};
+
+export type CurrentUserInfo = {
+  id?: string;
+  email: string;
+  role: string;
+  firstName?: string | null;
+  lastName?: string | null;
+} | null;
+
+export type FlightInfo = {
+  id: string;
+  code: string;
+  status?: string;
+  departureAt: string;
+  arrivalAt: string;
+  isDirect: boolean;
+  originAirport: { iataCode: string; city: string; name: string };
+  destinationAirport: { iataCode: string; city: string; name: string };
+  aircraft: {
     id: string;
-    code: string;
-    departureAt: string;
-    arrivalAt: string;
-    isDirect: boolean;
-    originAirport: { iataCode: string; city: string; name: string };
-    destinationAirport: { iataCode: string; city: string; name: string };
-    aircraft: {
-      id: string;
-      model: string;
-      registration: string;
-      layout: string | null;
-      seatCount: number;
-    };
+    model: string;
+    registration: string;
+    layout: string | null;
+    seatCount: number;
   };
-  initialFare: {
-    id: string;
-    name: string;
-    cabinClass: CabinClass;
-    price: number;
-    currency: string;
-  } | null;
-  allFares: Array<{
-    id: string;
-    name: string;
-    cabinClass: CabinClass;
-    price: number;
-    currency: string;
-  }>;
+};
+
+type AsientosClientProps = {
+  flight: FlightInfo;
+  initialFare: FareInfo | null;
+  allFares: FareInfo[];
   initialSeats: FlightSeatView[];
   initialPassengersCount: number;
-  currentUser: { email: string; role: string } | null;
+  currentUser: CurrentUserInfo;
 };
+
+/**
+ * Calcula dinámicamente el costo adicional de una butaca en base a la tarifa,
+ * fila especial (Fila 3 VIP +$14k, Fila 14 Salida de emergencia +Leg),
+ * y derechos de elección de asiento (seatSelection).
+ */
+export function getSeatAdditionalPrice(
+  seat: FlightSeatView,
+  fare: FareInfo | null | undefined,
+): { price: number; label: string; isIncluded: boolean } {
+  // 1. Fila 3 en Primera Clase / Premium Club (+ $14.000 ARS, badge "+$14k")
+  if (seat.rowNumber === 3) {
+    return {
+      price: 14000,
+      label: '+$14.000 ARS',
+      isIncluded: false,
+    };
+  }
+
+  // 2. Fila 14 Salida de Emergencia con espacio extra ("+Leg")
+  const isExtraLegroom =
+    seat.rowNumber === 14 &&
+    ['A', 'B', 'D', 'E', 'F'].includes(seat.columnLetter);
+
+  if (isExtraLegroom) {
+    const extraLegroomFee = 6000;
+    if (fare && fare.seatSelection === false) {
+      const totalFee = 3500 + extraLegroomFee;
+      return {
+        price: totalFee,
+        label: `+$${totalFee.toLocaleString('es-AR')} ARS`,
+        isIncluded: false,
+      };
+    }
+    return {
+      price: extraLegroomFee,
+      label: '+$6.000 ARS',
+      isIncluded: false,
+    };
+  }
+
+  // 3. Butaca estándar:
+  if (fare?.seatSelection) {
+    return {
+      price: 0,
+      label: 'Incluido $0',
+      isIncluded: true,
+    };
+  }
+
+  if (fare && fare.seatSelection === false) {
+    return {
+      price: 3500,
+      label: '+$3.500 ARS',
+      isIncluded: false,
+    };
+  }
+
+  return {
+    price: 0,
+    label: 'Incluido $0',
+    isIncluded: true,
+  };
+}
 
 export default function AsientosClient({
   flight,
@@ -148,6 +221,42 @@ export default function AsientosClient({
 
   const currentFare = initialFare ?? allFares[0];
 
+  // Cálculo dinámico del adicional total de los asientos seleccionados
+  const totalAdditionalSeatsPrice = useMemo(() => {
+    let sum = 0;
+    for (const seatId of selectedSeatIds) {
+      const s = seats.find((seat) => seat.id === seatId);
+      if (s) {
+        const { price } = getSeatAdditionalPrice(s, currentFare);
+        sum += price;
+      }
+    }
+    return sum;
+  }, [selectedSeatIds, seats, currentFare]);
+
+  // Total acumulado de la reserva (Tarifa Base + Adicionales de Asientos)
+  const grandTotal = useMemo(() => {
+    const base = currentFare ? currentFare.price * passengersCount : 0;
+    return base + totalAdditionalSeatsPrice;
+  }, [currentFare, passengersCount, totalAdditionalSeatsPrice]);
+
+  // Control de visualización de filas extendidas (16 a 25)
+  const [showExtendedRows, setShowExtendedRows] = useState(false);
+
+  // Perfil del usuario activo en el header
+  const userDisplayName = currentUser
+    ? `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() ||
+      currentUser.email.split('@')[0]
+    : 'Cmdte. Morales';
+
+  const userRoleLabel = currentUser
+    ? currentUser.role === 'ADMIN'
+      ? 'Administrador'
+      : currentUser.role === 'MOSTRADOR'
+      ? 'Mostrador Operativo'
+      : 'Pasajero Frecuente'
+    : 'Pasajero Frecuente';
+
   // Agrupamiento por filas
   const seatsByRow = useMemo(() => {
     const map = new Map<number, FlightSeatView[]>();
@@ -171,12 +280,22 @@ export default function AsientosClient({
     }
 
     if (seat.status === 'OCCUPIED') {
-      setErrorMessage(`El asiento ${seat.rowNumber}${seat.columnLetter} está ocupado.`);
+      setErrorMessage(`El asiento ${seat.rowNumber}${seat.columnLetter} se encuentra ocupado.`);
       return;
     }
     if (seat.status === 'LOCKED') {
       setErrorMessage(
         `El asiento ${seat.rowNumber}${seat.columnLetter} está bloqueado temporalmente por otro usuario.`,
+      );
+      return;
+    }
+
+    // Validación de correspondencia de cabina según RF-03
+    if (currentFare && seat.cabinClass !== currentFare.cabinClass) {
+      const fareCabinName = currentFare.cabinClass === 'FIRST' ? 'Primera Clase' : 'Economy';
+      const seatCabinName = seat.cabinClass === 'FIRST' ? 'Primera Clase' : 'Economy';
+      setErrorMessage(
+        `El asiento ${seat.rowNumber}${seat.columnLetter} pertenece a ${seatCabinName} y no corresponde a tu tarifa seleccionada (${currentFare.name} - ${fareCabinName}).`,
       );
       return;
     }
@@ -205,8 +324,11 @@ export default function AsientosClient({
   const handleProceedToPayment = async () => {
     setErrorMessage(null);
 
-    if (selectedSeatIds.length === 0) {
-      setErrorMessage('Debés seleccionar al menos un asiento.');
+    if (selectedSeatIds.length < passengersCount) {
+      const remaining = passengersCount - selectedSeatIds.length;
+      setErrorMessage(
+        `Debés asignar los asientos para todos los pasajeros (${selectedSeatIds.length} de ${passengersCount} asignados. Falta asignar ${remaining} ${remaining === 1 ? 'asiento' : 'asientos'}).`,
+      );
       return;
     }
 
@@ -265,7 +387,13 @@ export default function AsientosClient({
   }, [totalSeatsCount, freeSeatsCount]);
 
   return (
-    <div className="min-h-screen bg-[#f8f9fd] text-[#170040] font-sans antialiased">
+    <div
+      className="min-h-screen bg-[#f8f9fd] text-[#170040] antialiased"
+      style={{
+        fontFamily:
+          "'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      }}
+    >
       {/* 1. TOP NAVBAR HEADER */}
       <header className="bg-[#2e1065] text-white px-6 py-3 border-b border-white/10 flex items-center justify-between">
         <div className="flex items-center gap-6">
@@ -341,16 +469,16 @@ export default function AsientosClient({
             <span className="absolute top-0 right-0 w-2 h-2 rounded-full bg-[#E11D48]" />
           </div>
 
-          {/* Usuario Cmdte. Morales */}
+          {/* Usuario conectado */}
           <div className="flex items-center gap-2.5 bg-[#250d4d] border border-white/10 rounded-full pl-3 pr-1.5 py-1">
             <div className="text-right leading-tight">
-              <span className="text-xs font-bold text-white block">Cmdte. Morales</span>
-              <span className="text-[9px] text-purple-200/60 font-medium">Pasajero Frecuente</span>
+              <span className="text-xs font-bold text-white block">{userDisplayName}</span>
+              <span className="text-[9px] text-purple-200/60 font-medium">{userRoleLabel}</span>
             </div>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={AVATAR}
-              alt="Avatar Cmdte. Morales"
+              alt={`Avatar ${userDisplayName}`}
               className="w-7 h-7 rounded-full object-cover border border-purple-400"
             />
           </div>
@@ -484,28 +612,28 @@ export default function AsientosClient({
         )}
 
         {/* Barra de Referencias / Leyenda */}
-        <div className="bg-white border border-gray-100 rounded-2xl p-2.5 px-4 shadow-sm flex flex-wrap items-center gap-6 text-xs font-semibold">
-          <div className="flex items-center gap-2">
+        <div className="bg-white border border-gray-100 rounded-2xl py-3.5 px-6 my-4 shadow-sm flex flex-wrap items-center gap-8 sm:gap-10 text-xs font-semibold">
+          <div className="flex items-center gap-2.5">
             <div className="w-4 h-4 rounded bg-[#e0f2fe] border border-[#bae6fd]" />
-            <span className="text-gray-700">Disponible</span>
+            <span className="text-gray-700 font-medium">Disponible</span>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded bg-[#E11D48] text-white flex items-center justify-center text-[10px] font-bold">
+          <div className="flex items-center gap-2.5">
+            <div className="w-4 h-4 rounded bg-[#E11D48] text-white flex items-center justify-center text-[10px] font-bold shadow-sm">
               ✓
             </div>
-            <span className="text-gray-700">Seleccionado</span>
+            <span className="text-gray-700 font-medium">Seleccionado</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <div className="w-4 h-4 rounded bg-[#e0f2fe] border border-[#bae6fd] text-[#0284c7] flex items-center justify-center text-[10px] font-bold">
               ✕
             </div>
-            <span className="text-gray-700">Ocupado</span>
+            <span className="text-gray-700 font-medium">Ocupado</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <div className="w-4 h-4 rounded bg-[#170040] text-amber-300 flex items-center justify-center text-[10px]">
               💎
             </div>
-            <span className="text-gray-700">Premium Club</span>
+            <span className="text-gray-700 font-medium">Premium Club</span>
           </div>
         </div>
 
@@ -515,7 +643,7 @@ export default function AsientosClient({
           {/* FUSELAJE DEL AVIÓN (Columna Izquierda: 7 cols)           */}
           {/* ======================================================== */}
           <div className="lg:col-span-7">
-            <div className="relative bg-white border border-gray-200/80 rounded-t-[140px] rounded-b-3xl p-6 pt-10 shadow-sm max-w-[460px] mx-auto">
+            <div className="relative bg-white border border-gray-200/80 rounded-t-[140px] rounded-b-3xl p-7 sm:p-9 pt-10 shadow-sm max-w-[500px] mx-auto">
               {/* Cockpit / Proa */}
               <div className="text-center mb-6">
                 <div className="inline-flex flex-col items-center justify-center bg-[#f0f4ff] border border-blue-100 rounded-full px-4 py-1.5 shadow-inner">
@@ -561,9 +689,9 @@ export default function AsientosClient({
                   const rightSeats = rowSeats.slice(2, 4);
 
                   return (
-                    <div key={rowNum} className="flex items-center justify-between gap-2 px-2">
+                    <div key={rowNum} className="flex items-center justify-between gap-3 px-2 sm:px-3">
                       {/* Lado Izquierdo (A, C) */}
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2.5">
                         {leftSeats.map((seat) => (
                           <SeatButtonGraphic
                             key={seat.id}
@@ -612,14 +740,14 @@ export default function AsientosClient({
               </div>
 
               {/* Encabezado de Columnas Economy (A B C | PASILLO | D E F) */}
-              <div className="flex items-center justify-between text-[11px] font-bold text-gray-400 px-4 mb-2">
-                <div className="flex items-center justify-between w-[118px]">
+              <div className="flex items-center justify-between text-[11px] font-bold text-gray-400 px-3 sm:px-4 mb-2">
+                <div className="flex items-center justify-between w-[124px] sm:w-[130px]">
                   <span>A</span>
                   <span>B</span>
                   <span>C</span>
                 </div>
                 <span className="text-[10px] font-bold tracking-wider">PASILLO</span>
-                <div className="flex items-center justify-between w-[118px]">
+                <div className="flex items-center justify-between w-[124px] sm:w-[130px]">
                   <span>D</span>
                   <span>E</span>
                   <span>F</span>
@@ -638,9 +766,9 @@ export default function AsientosClient({
                   });
 
                   return (
-                    <div key={rowNum} className="flex items-center justify-between gap-1 px-1">
+                    <div key={rowNum} className="flex items-center justify-between gap-1.5 px-1 sm:px-2">
                       {/* Lado Izquierdo (A, B, C) */}
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-2">
                         {leftSeats.map((seat) => (
                           <SeatButtonGraphic
                             key={seat.id}
@@ -652,7 +780,7 @@ export default function AsientosClient({
                       </div>
 
                       {/* Pasillo central */}
-                      <div className="text-center w-10 flex flex-col items-center justify-center">
+                      <div className="text-center w-10 sm:w-12 flex flex-col items-center justify-center">
                         <span
                           className={`text-xs font-bold font-mono ${
                             isSelectedRow ? 'text-[#E11D48]' : 'text-gray-400'
@@ -664,7 +792,7 @@ export default function AsientosClient({
                       </div>
 
                       {/* Lado Derecho (D, E, F) */}
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-2">
                         {rightSeats.map((seat) => (
                           <SeatButtonGraphic
                             key={seat.id}
@@ -680,7 +808,7 @@ export default function AsientosClient({
               </div>
 
               {/* SALIDA DE EMERGENCIA STRIP */}
-              <div className="bg-[#eff6ff] text-[#E11D48] py-1.5 px-4 rounded-xl flex items-center justify-between text-[11px] font-extrabold my-3 border border-blue-100">
+              <div className="bg-[#eff6ff] text-[#E11D48] py-2 px-5 rounded-xl flex items-center justify-between text-[11px] font-extrabold my-3.5 border border-blue-100">
                 <div className="flex items-center gap-1">
                   <span>✱</span>
                   <span>SALIDA DE EMERGENCIA IZQ</span>
@@ -699,8 +827,8 @@ export default function AsientosClient({
                   const rightSeats = rowSeats.slice(3, 6);
 
                   return (
-                    <div key={rowNum} className="flex items-center justify-between gap-1 px-1">
-                      <div className="flex items-center gap-1.5">
+                    <div key={rowNum} className="flex items-center justify-between gap-1.5 px-1 sm:px-2">
+                      <div className="flex items-center gap-2">
                         {leftSeats.map((seat) => (
                           <SeatButtonGraphic
                             key={seat.id}
@@ -713,14 +841,14 @@ export default function AsientosClient({
                         ))}
                       </div>
 
-                      <div className="text-center w-10">
+                      <div className="text-center w-10 sm:w-12">
                         <span className="text-xs font-bold text-gray-500 font-mono">{rowNum}</span>
                         {rowNum === 14 && (
                           <span className="text-[8px] font-bold text-gray-400 block -mt-0.5">EXTRA</span>
                         )}
                       </div>
 
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-2">
                         {rightSeats.map((seat) => (
                           <SeatButtonGraphic
                             key={seat.id}
@@ -737,12 +865,73 @@ export default function AsientosClient({
                 })}
               </div>
 
-              {/* FILAS 16 A 25 ECONOMY INDICATOR */}
+              {/* FILAS 16 A 25 ECONOMY INDICATOR CON TOGGLE */}
               <div className="text-center my-4">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                  · · · FILAS 16 A 25 ECONOMY · · ·
-                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowExtendedRows((prev) => !prev)}
+                  className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-[#E11D48] transition-colors py-1 px-3 rounded-full hover:bg-gray-100 cursor-pointer"
+                >
+                  <span>· · · FILAS 16 A 25 ECONOMY {showExtendedRows ? '(OCULTAR)' : ''} · · ·</span>
+                  <span className="material-symbols-outlined text-xs">
+                    {showExtendedRows ? 'expand_less' : 'expand_more'}
+                  </span>
+                </button>
               </div>
+
+              {/* FILAS EXTENDIDAS 16 A 25 */}
+              {showExtendedRows && (
+                <div className="space-y-2 mb-4">
+                  {Array.from({ length: 10 }).map((_, idx) => {
+                    const rowNum = 16 + idx;
+                    const rowSeats = seatsByRow.get(rowNum) ?? [];
+                    if (rowSeats.length === 0) return null;
+                    const leftSeats = rowSeats.slice(0, 3);
+                    const rightSeats = rowSeats.slice(3, 6);
+                    const isSelectedRow = selectedSeatIds.some((id) => {
+                      const s = seats.find((st) => st.id === id);
+                      return s?.rowNumber === rowNum;
+                    });
+
+                    return (
+                      <div key={rowNum} className="flex items-center justify-between gap-1.5 px-1 sm:px-2">
+                        <div className="flex items-center gap-2">
+                          {leftSeats.map((seat) => (
+                            <SeatButtonGraphic
+                              key={seat.id}
+                              seat={seat}
+                              isSelected={selectedSeatIds.includes(seat.id)}
+                              onClick={() => handleSeatClick(seat)}
+                            />
+                          ))}
+                        </div>
+
+                        <div className="text-center w-10 sm:w-12 flex flex-col items-center justify-center">
+                          <span
+                            className={`text-xs font-bold font-mono ${
+                              isSelectedRow ? 'text-[#E11D48]' : 'text-gray-400'
+                            }`}
+                          >
+                            {rowNum}
+                          </span>
+                          {isSelectedRow && <span className="w-1.5 h-1.5 rounded-full bg-[#E11D48] mt-0.5" />}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {rightSeats.map((seat) => (
+                            <SeatButtonGraphic
+                              key={seat.id}
+                              seat={seat}
+                              isSelected={selectedSeatIds.includes(seat.id)}
+                              onClick={() => handleSeatClick(seat)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Baños Traseros y Galley Popa */}
               <div className="bg-[#f1f5f9] text-gray-700 py-2.5 px-4 rounded-xl flex items-center justify-between text-xs font-bold mb-3">
@@ -840,6 +1029,10 @@ export default function AsientosClient({
                       : 'Pasillo'
                     : 'Sin selección';
 
+                  const seatPricing = assignedSeat
+                    ? getSeatAdditionalPrice(assignedSeat, currentFare)
+                    : null;
+
                   return (
                     <div key={i} className="flex items-center justify-between py-1 border-b border-gray-50 last:border-0">
                       <div className="flex items-center gap-3">
@@ -863,8 +1056,8 @@ export default function AsientosClient({
                         <div className="bg-[#E11D48] text-white font-extrabold text-xs px-3 py-1 rounded-lg text-center shadow-sm">
                           {seatLabel}
                         </div>
-                        <span className="text-[10px] text-gray-400 font-medium block mt-0.5">
-                          Incluido $0
+                        <span className="text-[10px] text-gray-500 font-medium block mt-0.5">
+                          {assignedSeat ? seatPricing?.label : '-'}
                         </span>
                       </div>
                     </div>
@@ -872,21 +1065,56 @@ export default function AsientosClient({
                 })}
               </div>
 
-              {/* Detalle adicional de tarifas */}
-              <div className="border-t border-gray-100 pt-3 space-y-1 text-xs">
-                {selectedSeatIds.map((id) => {
-                  const s = seats.find((seat) => seat.id === id);
-                  return (
-                    <div key={id} className="flex items-center justify-between text-gray-600">
-                      <span>Adicional Selección {s ? `${s.rowNumber}${s.columnLetter}` : id}:</span>
-                      <span className="font-semibold text-gray-800">$0 ARS</span>
-                    </div>
-                  );
-                })}
+              {/* Detalle de tarifas y Total acumulado */}
+              <div className="border-t border-gray-100 pt-3 space-y-2 text-xs">
+                {/* 1. TARIFA BASE (ARRIBA DEL TOTAL) */}
+                {currentFare && (
+                  <div className="flex items-center justify-between text-gray-700">
+                    <span className="font-medium">
+                      Tarifa base ({passengersCount} {passengersCount === 1 ? 'pasajero' : 'pasajeros'} · {currentFare.name}):
+                    </span>
+                    <span className="font-bold text-gray-900">
+                      ${(currentFare.price * passengersCount).toLocaleString('es-AR')} {currentFare.currency}
+                    </span>
+                  </div>
+                )}
 
-                <div className="flex items-center justify-between pt-2 text-xs font-bold">
-                  <span className="text-gray-700">Total Selección de Asientos:</span>
-                  <span className="text-[#E11D48] font-black text-sm">$0 ARS (Incluido)</span>
+                {/* 2. ADICIONALES POR BUTACA SELECCIONADA */}
+                {selectedSeatIds.length > 0 && (
+                  <div className="space-y-1 pt-1.5 border-t border-gray-100">
+                    {selectedSeatIds.map((id) => {
+                      const s = seats.find((seat) => seat.id === id);
+                      if (!s) return null;
+                      const pricing = getSeatAdditionalPrice(s, currentFare);
+                      return (
+                        <div key={id} className="flex items-center justify-between text-gray-600">
+                          <span>Adicional Selección {s.rowNumber}{s.columnLetter}:</span>
+                          <span className="font-semibold text-gray-800">
+                            {pricing.price === 0
+                              ? '$0 ARS'
+                              : `+$${pricing.price.toLocaleString('es-AR')} ARS`}
+                          </span>
+                        </div>
+                      );
+                    })}
+
+                    <div className="flex items-center justify-between text-[11px] text-gray-500 pt-1">
+                      <span>Total Selección de Asientos:</span>
+                      <span className="font-semibold text-[#E11D48]">
+                        {totalAdditionalSeatsPrice === 0
+                          ? '$0 ARS (Incluido)'
+                          : `+$${totalAdditionalSeatsPrice.toLocaleString('es-AR')} ARS`}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. TOTAL GENERAL (TARIFA BASE + ADICIONALES) */}
+                <div className="flex items-center justify-between pt-2.5 text-xs font-bold border-t border-gray-200">
+                  <span className="text-[#170040] text-sm font-extrabold">Total de la Reserva:</span>
+                  <span className="text-[#E11D48] font-black text-base">
+                    ${grandTotal.toLocaleString('es-AR')} ARS
+                  </span>
                 </div>
               </div>
             </div>
@@ -907,7 +1135,7 @@ export default function AsientosClient({
                   {flight.destinationAirport.city} ({flight.destinationAirport.iataCode})
                 </span>
                 <span className="text-xs text-gray-500 font-medium mt-0.5 block">
-                  Llegada estimada: {arrivalFormatted} ART · {flight.isDirect ? 'Directo' : 'Con escalas'}
+                  {flight.destinationAirport.name} · Llegada {arrivalFormatted} ART · {flight.isDirect ? 'Directo' : 'Con escalas'}
                 </span>
               </div>
             </div>
@@ -926,24 +1154,50 @@ export default function AsientosClient({
             </div>
 
             {/* BOTÓN PRINCIPAL: CONTINUAR AL PAGO */}
-            <button
-              type="button"
-              onClick={handleProceedToPayment}
-              disabled={submitting || selectedSeatIds.length === 0}
-              className="w-full bg-[#E11D48] hover:bg-[#ba0035] text-white font-extrabold text-sm py-3.5 px-6 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-rose-900/20 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {submitting ? (
-                <>
-                  <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
-                  Bloqueando plazas...
-                </>
-              ) : (
-                <>
-                  <span>Continuar al Pago (Paso 3)</span>
-                  <span className="material-symbols-outlined text-base">arrow_forward</span>
-                </>
-              )}
-            </button>
+            {(() => {
+              const allAssigned = selectedSeatIds.length === passengersCount;
+              const missingCount = passengersCount - selectedSeatIds.length;
+
+              return (
+                <div className="space-y-1.5">
+                  <button
+                    type="button"
+                    onClick={handleProceedToPayment}
+                    disabled={submitting || !allAssigned}
+                    className="w-full bg-[#E11D48] hover:bg-[#ba0035] text-white font-extrabold text-sm py-3.5 px-6 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-rose-900/20 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {submitting ? (
+                      <>
+                        <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
+                        Bloqueando plazas...
+                      </>
+                    ) : !allAssigned ? (
+                      <>
+                        <span>
+                          Continuar al Pago ({selectedSeatIds.length}/{passengersCount} asignados)
+                        </span>
+                        <span className="material-symbols-outlined text-base">arrow_forward</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>
+                          Continuar al Pago · ${grandTotal.toLocaleString('es-AR')} ARS
+                        </span>
+                        <span className="material-symbols-outlined text-base">arrow_forward</span>
+                      </>
+                    )}
+                  </button>
+
+                  {!allAssigned && (
+                    <p className="text-[11px] text-center text-gray-500 font-medium">
+                      {missingCount === 1
+                        ? 'Falta asignar 1 asiento para poder avanzar al pago.'
+                        : `Faltan asignar ${missingCount} asientos para poder avanzar al pago.`}
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* BOTÓN SECUNDARIO: VOLVER */}
             <Link
@@ -1029,16 +1283,15 @@ function SeatButtonGraphic({
     );
   }
 
-  // 3. Bloqueado temporalmente por otro usuario (ÁMBAR VIVO)
+  // 3. Bloqueado temporalmente por otro usuario (ÁMBAR VIVO, SIN ICONOS)
   if (isLockedByOther) {
     return (
       <button
         type="button"
         disabled
-        className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[10px] flex items-center justify-center cursor-not-allowed select-none"
+        className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[11px] flex items-center justify-center cursor-not-allowed select-none"
         title={`${seat.rowNumber}${seat.columnLetter} (Bloqueado por otro usuario)`}
       >
-        <span className="material-symbols-outlined text-[12px] mr-0.5">lock</span>
         <span>{seat.rowNumber}{seat.columnLetter}</span>
       </button>
     );
@@ -1061,13 +1314,13 @@ function SeatButtonGraphic({
     );
   }
 
-  // 5. Asientos First Class (Filas 1 y 2: azul cielo vivo, SIN ICONO DE PERSONA)
+  // 5. Asientos First Class (Filas 1 y 2: azul cielo vivo, MISMO TAMAÑO QUE EL RESTO, SIN ICONO)
   if (isFirstClass) {
     return (
       <button
         type="button"
         onClick={onClick}
-        className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-[#e0f2fe] border border-[#7dd3fc] hover:bg-[#bae6fd] hover:border-[#38bdf8] text-[#0369a1] font-bold text-[11px] flex items-center justify-center transition-all cursor-pointer shadow-sm"
+        className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-[#e0f2fe] border border-[#7dd3fc] hover:bg-[#bae6fd] hover:border-[#38bdf8] text-[#0369a1] font-bold text-[11px] flex items-center justify-center transition-all cursor-pointer shadow-sm"
         title={`${seat.rowNumber}${seat.columnLetter} (Primera Clase)`}
       >
         <span>{seat.rowNumber}{seat.columnLetter}</span>

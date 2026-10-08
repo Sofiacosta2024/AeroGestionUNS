@@ -48,11 +48,18 @@ export default async function AsientosPage({
   );
 
   return (
-    <div className="theme-vuelos min-h-screen bg-surface">
+    <div
+      className="theme-vuelos min-h-screen bg-surface"
+      style={{
+        fontFamily:
+          "'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      }}
+    >
       <AsientosClient
         flight={{
           id: flight.id,
           code: flight.code,
+          status: flight.status,
           departureAt: flight.departureAt.toISOString(),
           arrivalAt: flight.arrivalAt.toISOString(),
           isDirect: flight.isDirect,
@@ -78,8 +85,10 @@ export default async function AsientosPage({
           selectedFare
             ? {
                 id: selectedFare.fare.id,
+                code: selectedFare.fare.code,
                 name: selectedFare.fare.name,
                 cabinClass: selectedFare.fare.cabinClass,
+                seatSelection: selectedFare.fare.seatSelection,
                 price: Number(selectedFare.price),
                 currency: selectedFare.currency,
               }
@@ -87,8 +96,10 @@ export default async function AsientosPage({
         }
         allFares={flight.fares.map((f) => ({
           id: f.fare.id,
+          code: f.fare.code,
           name: f.fare.name,
           cabinClass: f.fare.cabinClass,
+          seatSelection: f.fare.seatSelection,
           price: Number(f.price),
           currency: f.currency,
         }))}
@@ -97,8 +108,11 @@ export default async function AsientosPage({
         currentUser={
           user
             ? {
+                id: user.id,
                 email: user.email,
                 role: user.role,
+                firstName: user.firstName,
+                lastName: user.lastName,
               }
             : null
         }

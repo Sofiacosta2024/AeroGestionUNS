@@ -102,6 +102,8 @@ const theme = {
     'tertiary-fixed-dim': '#93ccff',
   },
   fontFamily: {
+    sans: SANS_STACK,
+    mono: MONO_STACK,
     'body-lg': SANS_STACK,
     'body-md': SANS_STACK,
     'body-sm': SANS_STACK,
