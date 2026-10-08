@@ -259,6 +259,7 @@ model Seat {
 
   bookingPassengers BookingPassenger[]
   boardingPasses    BoardingPass[]
+  seatLocks         SeatLock[]
 
   @@unique([aircraftId, rowNumber, columnLetter])
   @@index([aircraftId, cabinClass])
@@ -314,6 +315,7 @@ model Flight {
 
   fares         FlightFare[]
   bookingFlights BookingFlight[]
+  seatLocks     SeatLock[]
 
   /// Una aeronave no puede tener dos salidas en el mismo instante (RF-01, factibilidad)
   @@unique([aircraftId, departureAt])
@@ -484,15 +486,19 @@ model Booking {
   contactEmail    String        @map("contact_email") @db.VarChar(160)
   contactPhone    String?       @map("contact_phone") @db.VarChar(32)
   notes           String?       @db.VarChar(500)
+  /// Expiracion de la reserva temporal (5 minutos para completar el pago RF-03)
+  expiresAt       DateTime?     @map("expires_at") @db.Timestamptz(3)
   createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   flights         BookingFlight[]
   passengers      BookingPassenger[]
   payments        Payment[]
+  seatLocks       SeatLock[]
 
   @@index([userId])
   @@index([status])
+  @@index([expiresAt])
   @@index([createdAt])
   @@map("bookings")
 }
@@ -596,4 +602,28 @@ model BoardingPass {
   @@index([flightCode])
   @@index([status])
   @@map("boarding_passes")
+}
+
+// ---------------------------------------------------------------------------
+// BLOQUEO TRANSACCIONAL ATOMICO DE ASIENTOS (RF-03)
+// ---------------------------------------------------------------------------
+
+/// Bloqueo temporal de asientos con exclusión mutua por vuelo (RF-03).
+/// Expira a los 5 minutos si no se completa el pago.
+model SeatLock {
+  id        String   @id @default(cuid())
+  flightId  String   @map("flight_id")
+  flight    Flight   @relation(fields: [flightId], references: [id], onDelete: Cascade)
+  seatId    String   @map("seat_id")
+  seat      Seat     @relation(fields: [seatId], references: [id], onDelete: Cascade)
+  bookingId String   @map("booking_id")
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  lockedAt  DateTime @default(now()) @map("locked_at") @db.Timestamptz(3)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+
+  /// Una butaca fisica solo puede tener un bloqueo por vuelo a la vez
+  @@unique([flightId, seatId])
+  @@index([bookingId])
+  @@index([expiresAt])
+  @@map("seat_locks")
 }

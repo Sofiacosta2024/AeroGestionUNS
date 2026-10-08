@@ -866,6 +866,9 @@ if (slotDef.to) flightQuery.set('timeTo', slotDef.to);
                     featured={index === 0}
                     flight={flight}
                     onSelect={(fareId) => setSelection({ flightId: flight.id, fareId })}
+                    onContinue={(fId, fareId) =>
+                      router.push(`/vuelos/${fId}/asientos?fareId=${fareId}&passengers=${passengers}`)
+                    }
                     selection={selection}
                   />
                 ))
@@ -1007,8 +1010,16 @@ if (slotDef.to) flightQuery.set('timeTo', slotDef.to);
                   </div>
                 </div>
                 <button
-                  className="px-space-xl py-3.5 rounded-lg bg-secondary-container text-on-secondary hover:bg-secondary font-label-lg text-label-lg font-bold shadow-lg transition-all flex items-center justify-center gap-space-sm group"
-                  onClick={() => setNotice('Selección de Asientos')}
+                  className="px-space-xl py-3.5 rounded-lg bg-secondary-container text-on-secondary hover:bg-secondary font-label-lg text-label-lg font-bold shadow-lg transition-all flex items-center justify-center gap-space-sm group cursor-pointer"
+                  onClick={() => {
+                    if (!selectedFlight || !selectedPrice) {
+                      setError('Debe seleccionar un vuelo antes de continuar');
+                      return;
+                    }
+                    router.push(
+                      `/vuelos/${selectedFlight.id}/asientos?fareId=${selectedPrice.id}&passengers=${passengers}`,
+                    );
+                  }}
                   type="button"
                 >
                   <div className="flex flex-col items-start leading-tight text-left">
@@ -1139,11 +1150,13 @@ function FlightCard({
   featured,
   selection,
   onSelect,
+  onContinue,
 }: {
   flight: FlightCardData;
   featured: boolean;
   selection: Selection | null;
   onSelect: (fareId: string) => void;
+  onContinue?: (flightId: string, fareId: string) => void;
 }) {
   // La grilla original reserva 3+3 columnas para dos tarifas; si el vuelo tiene
   // mas, se muestran las dos mas baratas para no romper el diseno 12 columnas.
@@ -1335,7 +1348,16 @@ function FlightCard({
             </span>
           </div>
           <button
-            className="w-full sm:w-auto px-space-lg py-space-sm rounded-lg bg-secondary-container text-on-secondary font-label-lg text-label-lg font-bold hover:bg-secondary transition-all shadow-md flex items-center justify-center gap-space-sm"
+            className="w-full sm:w-auto px-space-lg py-space-sm rounded-lg bg-secondary-container text-on-secondary font-label-lg text-label-lg font-bold hover:bg-secondary transition-all shadow-md flex items-center justify-center gap-space-sm cursor-pointer"
+            onClick={() => {
+              const fareId =
+                (selection?.flightId === flight.id ? selection.fareId : null) ??
+                cheapest ??
+                flight.prices[0]?.id;
+              if (fareId && onContinue) {
+                onContinue(flight.id, fareId);
+              }
+            }}
             type="button"
           >
             <span>Seleccionar Vuelo &amp; Continuar a Asientos</span>

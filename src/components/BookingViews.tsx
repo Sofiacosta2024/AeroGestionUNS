@@ -12,7 +12,7 @@ export function BookingSteps({
   const current = preparing ? 1 : confirmed ? 3 : 2;
   return (
     <ol className="booking-steps" aria-label="Etapas de la reserva">
-      {['Vuelos', 'Pasajeros', 'Pago', 'Confirmación'].map((label, i) => (
+      {['Vuelos', 'Asientos & Pasajeros', 'Pago', 'Confirmación'].map((label, i) => (
         <li
           key={label}
           className={i === current ? 'current' : i < current ? 'done' : ''}

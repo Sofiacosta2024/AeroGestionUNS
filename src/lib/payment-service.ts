@@ -26,6 +26,23 @@ export async function settlePayment(
   if (!canViewBookingPii(user, booking)) throw ApiError.forbidden();
   if (booking.status === 'CANCELLED' || booking.status === 'NO_SHOW')
     throw ApiError.conflict('Esta reserva no admite pagos');
+
+  // RF-03: Si la reserva temporal de 5 minutos expiró, se cancela y se liberan las butacas
+  if (booking.status === 'PENDING' && booking.expiresAt && booking.expiresAt < new Date()) {
+    await tx.seatLock.deleteMany({ where: { bookingId: booking.id } });
+    await tx.booking.update({
+      where: { id: booking.id },
+      data: { status: 'CANCELLED' },
+    });
+    for (const bf of booking.flights) {
+      await tx.flightFare.updateMany({
+        where: { flightId: bf.flightId, fareId: bf.fareId },
+        data: { availableSeats: { increment: booking.passengersCount } },
+      });
+    }
+    throw ApiError.conflict('El tiempo de reserva de 5 minutos ha expirado. Los asientos fueron liberados.');
+  }
+
   const existing = booking.payments.find((p) => p.status === 'APPROVED');
   if (existing) return { payment: existing, reused: true, booking };
   if (!['PENDING', 'CONFIRMED'].includes(booking.status))

@@ -22,8 +22,10 @@ export default async function PaymentPage({
   )
     redirect(`/confirmacion/${booking.bookingCode}`);
   const receipt = toReceipt(booking);
+  const isExpired = booking.expiresAt ? new Date() > booking.expiresAt : false;
   const available =
     ['PENDING', 'CONFIRMED'].includes(booking.status) &&
+    !isExpired &&
     booking.passengers.length === booking.passengersCount;
   return (
     <div className="payment-screen">
@@ -75,11 +77,12 @@ export default async function PaymentPage({
                 code={booking.bookingCode}
                 amount={receipt.amount}
                 email={receipt.email}
+                expiresAt={booking.expiresAt?.toISOString() ?? null}
               />
             ) : (
               <div className="alert-box" role="alert">
-                {booking.status === 'CANCELLED'
-                  ? 'Esta reserva está cancelada y no admite pagos.'
+                {booking.status === 'CANCELLED' || isExpired
+                  ? 'Esta reserva está cancelada o su tiempo de bloqueo de 5 minutos expiró y no admite pagos.'
                   : 'La reserva no está lista para el pago. Debe tener los datos de todos sus pasajeros y un estado pendiente o confirmado.'}
               </div>
             )}

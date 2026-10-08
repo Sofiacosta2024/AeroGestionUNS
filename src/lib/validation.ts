@@ -390,6 +390,28 @@ export const bookingSchema = z.object({
   flights: z.array(bookingFlightSchema).min(1, 'Seleccione al menos un vuelo').max(4),
 });
 
+/** Validación del bloqueo transaccional de 1 a 9 asientos (RF-03) */
+export const lockSeatsSchema = z.object({
+  fareId: z.string().cuid('Tarifa invalida'),
+  seatIds: z
+    .array(z.string().cuid('Identificador de asiento invalido'))
+    .min(1, 'Debe seleccionar al menos 1 asiento')
+    .max(9, 'Máximo 9 asientos permitidos por reserva'),
+  contactEmail: z.string().trim().toLowerCase().email('Correo invalido').max(160),
+  contactPhone: trimmed(32).optional().nullable(),
+  passengers: z
+    .array(
+      z.object({
+        firstName: required(80),
+        lastName: required(80),
+        documentType: documentTypeEnum.default('DNI'),
+        documentNumber: required(32),
+        birthDate: dateIso.optional().nullable(),
+      }),
+    )
+    .optional(),
+});
+
 export const bookingUpdateSchema = z
   .object({
     status: bookingStatusEnum.optional(),

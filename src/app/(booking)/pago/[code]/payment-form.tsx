@@ -1,5 +1,5 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { paymentSchema } from '@/lib/validation';
 import { digitsOnly } from '@/lib/mock-payment';
@@ -9,14 +9,32 @@ export default function PaymentForm({
   code,
   amount,
   email,
+  expiresAt,
 }: {
   code: string;
   amount: number;
   email: string;
+  expiresAt?: string | null;
 }) {
   const router = useRouter();
   const busy = useRef(false);
   const [submitting, setSubmitting] = useState(false);
+  const [timeLeft, setTimeLeft] = useState<number | null>(() => {
+    if (!expiresAt) return null;
+    return Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
+  });
+
+  useEffect(() => {
+    if (!expiresAt) return;
+    const interval = setInterval(() => {
+      const remaining = Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
+      setTimeLeft(remaining);
+      if (remaining <= 0) {
+        clearInterval(interval);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [expiresAt]);
   const [values, setValues] = useState({
     cardNumber: '',
     cardholder: '',
@@ -95,6 +113,12 @@ export default function PaymentForm({
         {errors[name]}
       </span>
     );
+
+  const isExpired = timeLeft !== null && timeLeft <= 0;
+  const minutes = Math.floor((timeLeft ?? 0) / 60);
+  const seconds = (timeLeft ?? 0) % 60;
+  const formattedTime = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
   return (
     <section className="booking-card payment-card">
       <div className="payment-title">
@@ -104,8 +128,44 @@ export default function PaymentForm({
         </div>
         <span className="test-badge">TEST MODE</span>
       </div>
+
+      {timeLeft !== null && !isExpired && (
+        <div
+          className={`countdown-banner ${timeLeft <= 60 ? 'urgent' : ''}`}
+          role="timer"
+          aria-live="polite"
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: 20 }}>
+            timer
+          </span>
+          <div>
+            <span>Tiempo restante de reserva: </span>
+            <strong className="countdown-timer-value">{formattedTime}</strong>
+            <p style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>
+              Bloqueo atómico activo (5 min). Si el tiempo expira, los asientos se liberarán.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {isExpired && (
+        <div className="alert-box" role="alert" style={{ marginBottom: 20 }}>
+          <strong>¡Tiempo de reserva expirado!</strong>
+          <p style={{ marginTop: 4 }}>
+            El lapso de 5 minutos estipulado por RF-03 venció y los asientos fueron liberados automáticamente.
+          </p>
+          <a
+            href="/vuelos"
+            className="booking-button secondary"
+            style={{ marginTop: 12, display: 'inline-block', textDecoration: 'none' }}
+          >
+            Volver a buscar vuelos
+          </a>
+        </div>
+      )}
+
       <form onSubmit={submit} noValidate>
-        <fieldset disabled={submitting}>
+        <fieldset disabled={submitting || isExpired}>
           <div className="form-field">
             <label htmlFor="pay-cardNumber">NÚMERO DE TARJETA</label>
             <input
