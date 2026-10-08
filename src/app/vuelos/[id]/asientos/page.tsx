@@ -56,8 +56,16 @@ export default async function AsientosPage({
           departureAt: flight.departureAt.toISOString(),
           arrivalAt: flight.arrivalAt.toISOString(),
           isDirect: flight.isDirect,
-          originAirport: flight.route.originAirport,
-          destinationAirport: flight.route.destinationAirport,
+          originAirport: {
+            iataCode: flight.route.originAirport.iataCode,
+            city: flight.route.originAirport.city,
+            name: flight.route.originAirport.name,
+          },
+          destinationAirport: {
+            iataCode: flight.route.destinationAirport.iataCode,
+            city: flight.route.destinationAirport.city,
+            name: flight.route.destinationAirport.name,
+          },
           aircraft: {
             id: flight.aircraft.id,
             model: flight.aircraft.model,

@@ -48,29 +48,6 @@ type AsientosClientProps = {
   currentUser: { email: string; role: string } | null;
 };
 
-// Pasajeros por defecto basados en la maqueta
-const DEFAULT_PASSENGERS_MOCK = [
-  { firstName: 'Mariano', lastName: 'Rodríguez', typeLabel: 'Adulto · Pasajero 1', initials: 'MR' },
-  { firstName: 'Lucía Belén', lastName: 'Gómez', typeLabel: 'Adulto · Pasajero 2', initials: 'LG' },
-  { firstName: 'Carlos', lastName: 'Fernández', typeLabel: 'Adulto · Pasajero 3', initials: 'CF' },
-  { firstName: 'Sofía', lastName: 'Martínez', typeLabel: 'Adulto · Pasajero 4', initials: 'SM' },
-  { firstName: 'Joaquín', lastName: 'Gutiérrez', typeLabel: 'Adulto · Pasajero 5', initials: 'JG' },
-  { firstName: 'Valentina', lastName: 'Díaz', typeLabel: 'Adulto · Pasajero 6', initials: 'VD' },
-  { firstName: 'Mateo', lastName: 'Romero', typeLabel: 'Adulto · Pasajero 7', initials: 'MR' },
-  { firstName: 'Camila', lastName: 'Álvarez', typeLabel: 'Adulto · Pasajero 8', initials: 'CA' },
-  { firstName: 'Ignacio', lastName: 'Torres', typeLabel: 'Adulto · Pasajero 9', initials: 'IT' },
-];
-
-// Asientos que se muestran ocupados en la maqueta de referencia
-const MOCKUP_OCCUPIED_SEATS = new Set([
-  '10A', '10B', '10E', '10F',
-  '11A', '11D', '11E',
-  '12C', '12E', '12F',
-  '13C', '13F',
-  '14C', '14D',
-  '15A', '15D', '15E',
-]);
-
 export default function AsientosClient({
   flight,
   initialFare,
@@ -81,27 +58,24 @@ export default function AsientosClient({
 }: AsientosClientProps) {
   const router = useRouter();
 
-  // Asegurar al menos 2 pasajeros por defecto para coincidir con la maqueta
-  const [passengersCount] = useState<number>(() => Math.max(2, initialPassengersCount));
+  const [passengersCount] = useState<number>(initialPassengersCount);
 
-  // Inicializar asientos seleccionados con 12A y 12B como en la maqueta
+  // Inicializar asientos seleccionados buscando preferentemente 12A y 12B si están libres
   const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>(() => {
-    const s12A = initialSeats.find((s) => s.rowNumber === 12 && s.columnLetter === 'A');
-    const s12B = initialSeats.find((s) => s.rowNumber === 12 && s.columnLetter === 'B');
+    const s12A = initialSeats.find((s) => s.rowNumber === 12 && s.columnLetter === 'A' && s.status === 'FREE');
+    const s12B = initialSeats.find((s) => s.rowNumber === 12 && s.columnLetter === 'B' && s.status === 'FREE');
     const defaults: string[] = [];
-    if (s12A) defaults.push(s12A.id);
-    if (s12B) defaults.push(s12B.id);
+    if (s12A && initialPassengersCount >= 1) defaults.push(s12A.id);
+    if (s12B && initialPassengersCount >= 2) defaults.push(s12B.id);
 
-    const needed = Math.max(2, initialPassengersCount);
-    if (defaults.length < needed) {
+    if (defaults.length < initialPassengersCount) {
       const freeSeats = initialSeats.filter(
         (s) =>
           s.status === 'FREE' &&
-          !MOCKUP_OCCUPIED_SEATS.has(`${s.rowNumber}${s.columnLetter}`) &&
           s.cabinClass === (initialFare?.cabinClass ?? 'ECONOMY') &&
           !defaults.includes(s.id),
       );
-      for (let i = 0; i < freeSeats.length && defaults.length < needed; i++) {
+      for (let i = 0; i < freeSeats.length && defaults.length < initialPassengersCount; i++) {
         defaults.push(freeSeats[i]!.id);
       }
     }
@@ -111,6 +85,33 @@ export default function AsientosClient({
   const [seats, setSeats] = useState<FlightSeatView[]>(initialSeats);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Formateo horario real del vuelo en huso ART
+  const departureFormatted = useMemo(() => {
+    return new Intl.DateTimeFormat('es-AR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'America/Argentina/Buenos_Aires',
+    }).format(new Date(flight.departureAt));
+  }, [flight.departureAt]);
+
+  const arrivalFormatted = useMemo(() => {
+    return new Intl.DateTimeFormat('es-AR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'America/Argentina/Buenos_Aires',
+    }).format(new Date(flight.arrivalAt));
+  }, [flight.arrivalAt]);
+
+  const durationFormatted = useMemo(() => {
+    const diffMs = new Date(flight.arrivalAt).getTime() - new Date(flight.departureAt).getTime();
+    const diffMin = Math.max(1, Math.round(diffMs / 60000));
+    const h = Math.floor(diffMin / 60);
+    const m = diffMin % 60;
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  }, [flight.departureAt, flight.arrivalAt]);
 
   // Reloj oficial ART
   const [clock, setClock] = useState('14:32:08 UTC-3');
@@ -169,7 +170,7 @@ export default function AsientosClient({
       return;
     }
 
-    if (seat.status === 'OCCUPIED' || MOCKUP_OCCUPIED_SEATS.has(`${seat.rowNumber}${seat.columnLetter}`)) {
+    if (seat.status === 'OCCUPIED') {
       setErrorMessage(`El asiento ${seat.rowNumber}${seat.columnLetter} está ocupado.`);
       return;
     }
@@ -212,8 +213,8 @@ export default function AsientosClient({
     setSubmitting(true);
     try {
       const passengersPayload = selectedSeatIds.map((_, i) => ({
-        firstName: DEFAULT_PASSENGERS_MOCK[i]?.firstName ?? `Pasajero`,
-        lastName: DEFAULT_PASSENGERS_MOCK[i]?.lastName ?? `${i + 1}`,
+        firstName: `Pasajero`,
+        lastName: `${i + 1}`,
         documentType: 'DNI' as const,
         documentNumber: `4${Math.floor(1000000 + Math.random() * 9000000)}`,
       }));
@@ -224,7 +225,7 @@ export default function AsientosClient({
         body: JSON.stringify({
           fareId: currentFare?.id,
           seatIds: selectedSeatIds,
-          contactEmail: currentUser?.email ?? 'mariano.rodriguez@example.com',
+          contactEmail: currentUser?.email ?? 'contacto@aerogestion.uns.edu.ar',
           passengers: passengersPayload,
         }),
       });
@@ -253,8 +254,15 @@ export default function AsientosClient({
     }
   };
 
-  // Total de asientos libres
+  // Tasa de ocupación y asientos libres reales del vuelo
   const freeSeatsCount = useMemo(() => seats.filter((s) => s.status === 'FREE').length, [seats]);
+  const totalSeatsCount = flight.aircraft.seatCount || seats.length || 150;
+  const occupancyPercentage = useMemo(() => {
+    if (!totalSeatsCount) return '75.0%';
+    const occupied = Math.max(0, totalSeatsCount - freeSeatsCount);
+    const pct = ((occupied / totalSeatsCount) * 100).toFixed(1);
+    return `${pct}%`;
+  }, [totalSeatsCount, freeSeatsCount]);
 
   return (
     <div className="min-h-screen bg-[#f8f9fd] text-[#170040] font-sans antialiased">
@@ -440,20 +448,20 @@ export default function AsientosClient({
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div>
             <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
-              OPERACIÓN REGULAR / <span className="text-[#E11D48] font-bold">BOEING 737-800 NG</span> / CONFIGURACIÓN
-              MIXTA (C12 / Y150)
+              OPERACIÓN REGULAR / <span className="text-[#E11D48] font-bold">{flight.aircraft.model.toUpperCase()}</span> / CONFIGURACIÓN{' '}
+              {flight.aircraft.layout?.toUpperCase() ?? 'ESTÁNDAR'} ({flight.aircraft.seatCount} BUTACAS)
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-[#170040] tracking-tight mt-0.5">
               Mapa de Cabina y Asignación
             </h1>
             <p className="text-xs text-gray-500 mt-0.5">
-              Selecciona las butacas preferidas para tu vuelo a Buenos Aires (Aeroparque).
+              Selecciona las butacas preferidas para tu vuelo a {flight.destinationAirport.city} ({flight.destinationAirport.iataCode}).
             </p>
           </div>
 
           {/* Widget Tasa de Ocupación */}
           <div className="bg-white border border-gray-100 rounded-2xl px-4 py-2.5 shadow-sm flex items-center gap-3 shrink-0">
-            <div className="w-9 h-9 rounded-xl bg-[#e0f2fe] text-[#0369a1] flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-[#e0f2fe] text-[#0284c7] flex items-center justify-center">
               <span className="material-symbols-outlined text-lg">flight_takeoff</span>
             </div>
             <div className="leading-tight">
@@ -461,7 +469,7 @@ export default function AsientosClient({
                 TASA DE OCUPACIÓN
               </span>
               <span className="text-xs font-extrabold text-[#170040]">
-                78.4% · 35 Libres
+                {occupancyPercentage} · {freeSeatsCount} Libres
               </span>
             </div>
           </div>
@@ -765,46 +773,46 @@ export default function AsientosClient({
           {/* PANEL DERECHO DE RESUMEN Y ACCIONES (5 cols)             */}
           {/* ======================================================== */}
           <div className="lg:col-span-5 space-y-4">
-            {/* CARD 1: VUELO AG-1420 */}
-            <div className="bg-[#19063d] text-white rounded-2xl p-5 shadow-sm">
+            {/* CARD 1: VUELO REAL */}
+            <div className="bg-[#1e0a45] text-white rounded-2xl p-5 shadow-sm border border-purple-900/30">
               <div className="flex items-center justify-between mb-4">
                 <span className="font-extrabold text-sm tracking-wide text-white uppercase">
                   VUELO {flight.code}
                 </span>
-                <span className="bg-[#2b1057] border border-purple-600/40 text-white text-[11px] font-bold px-3 py-0.5 rounded-full uppercase tracking-wider">
+                <span className="bg-[#2b1057] border border-purple-500/30 text-purple-100 text-[11px] font-bold px-3 py-0.5 rounded-full uppercase tracking-wider">
                   CONFIRMADO
                 </span>
               </div>
 
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-2xl font-black text-white">06:45</div>
-                  <div className="text-xs text-purple-200/70 font-medium">
-                    BHI · Bahía Blanca
+                  <div className="text-2xl font-black text-white">{departureFormatted}</div>
+                  <div className="text-xs text-purple-200/80 font-medium">
+                    {flight.originAirport.iataCode} · {flight.originAirport.city}
                   </div>
                 </div>
 
                 <div className="text-center px-2">
-                  <div className="text-[11px] font-bold text-[#E11D48]">1h 10m</div>
-                  <div className="w-16 h-[2px] bg-purple-500/40 relative my-1">
-                    <span className="absolute right-0 top-1/2 -translate-y-1/2 text-purple-300 text-xs">→</span>
+                  <div className="text-[11px] font-bold text-[#E11D48]">{durationFormatted}</div>
+                  <div className="w-16 h-[2px] bg-purple-400/40 relative my-1">
+                    <span className="absolute right-0 top-1/2 -translate-y-1/2 text-purple-200 text-xs">→</span>
                   </div>
-                  <div className="text-[10px] font-medium text-purple-200/60">
+                  <div className="text-[10px] font-medium text-purple-200/70">
                     {flight.isDirect ? 'Directo' : 'Con Escalas'}
                   </div>
                 </div>
 
                 <div className="text-right">
-                  <div className="text-2xl font-black text-white">07:55</div>
-                  <div className="text-xs text-purple-200/70 font-medium">
-                    {flight.destinationAirport.iataCode} · {flight.destinationAirport.name.includes('Aeroparque') ? 'Aeroparque' : flight.destinationAirport.city}
+                  <div className="text-2xl font-black text-white">{arrivalFormatted}</div>
+                  <div className="text-xs text-purple-200/80 font-medium">
+                    {flight.destinationAirport.iataCode} · {flight.destinationAirport.city}
                   </div>
                 </div>
               </div>
 
-              <div className="border-t border-white/10 pt-3 mt-4 flex items-center justify-between text-[11px] font-semibold text-purple-200/60">
-                <span>EQUIPO: {flight.aircraft.model.includes('737') ? 'B737-800' : flight.aircraft.model}</span>
-                <span>TARIFA: FLEX ECONOMY</span>
+              <div className="border-t border-white/10 pt-3 mt-4 flex items-center justify-between text-[11px] font-semibold text-purple-200/70">
+                <span>EQUIPO: {flight.aircraft.model}</span>
+                <span>TARIFA: {currentFare?.name.toUpperCase() ?? 'ECONOMY'}</span>
               </div>
             </div>
 
@@ -819,12 +827,6 @@ export default function AsientosClient({
                 {Array.from({ length: passengersCount }).map((_, i) => {
                   const assignedSeatId = selectedSeatIds[i];
                   const assignedSeat = seats.find((s) => s.id === assignedSeatId);
-                  const mockInfo = DEFAULT_PASSENGERS_MOCK[i] ?? {
-                    firstName: `Pasajero`,
-                    lastName: `${i + 1}`,
-                    typeLabel: `Adulto · Pasajero ${i + 1}`,
-                    initials: `P${i + 1}`,
-                  };
 
                   const seatLabel = assignedSeat
                     ? `${assignedSeat.rowNumber}${assignedSeat.columnLetter}`
@@ -839,19 +841,19 @@ export default function AsientosClient({
                     : 'Sin selección';
 
                   return (
-                    <div key={i} className="flex items-center justify-between py-1">
+                    <div key={i} className="flex items-center justify-between py-1 border-b border-gray-50 last:border-0">
                       <div className="flex items-center gap-3">
                         {/* Avatar */}
-                        <div className="w-9 h-9 rounded-full bg-[#19063d] text-white font-black text-xs flex items-center justify-center shrink-0">
-                          {mockInfo.initials}
+                        <div className="w-9 h-9 rounded-full bg-[#1e0a45] text-white font-black text-xs flex items-center justify-center shrink-0 shadow-sm">
+                          P{i + 1}
                         </div>
                         <div>
                           <div className="text-xs font-bold text-[#170040]">
-                            {mockInfo.firstName} {mockInfo.lastName}
+                            Pasajero {i + 1}
                           </div>
-                          <div className="text-[11px] text-gray-400 font-medium">{mockInfo.typeLabel}</div>
+                          <div className="text-[11px] text-gray-500 font-medium">Adulto · Pasajero {i + 1}</div>
                           <div className="text-[11px] font-bold text-[#E11D48]">
-                            {seatPosition} · Economy Flex
+                            {seatPosition} · {currentFare?.name ?? 'Economy'}
                           </div>
                         </div>
                       </div>
@@ -894,7 +896,7 @@ export default function AsientosClient({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={DESTINATION_IMG}
-                alt="Destino Buenos Aires"
+                alt={`Destino ${flight.destinationAirport.city}`}
                 className="w-14 h-14 rounded-xl object-cover shrink-0"
               />
               <div className="leading-tight">
@@ -902,10 +904,10 @@ export default function AsientosClient({
                   DESTINO
                 </span>
                 <span className="text-sm font-extrabold text-[#170040] block">
-                  Buenos Aires (AEP)
+                  {flight.destinationAirport.city} ({flight.destinationAirport.iataCode})
                 </span>
                 <span className="text-xs text-gray-500 font-medium mt-0.5 block">
-                  Clima estimado a la llegada: 22°C Despejado
+                  Llegada estimada: {arrivalFormatted} ART · {flight.isDirect ? 'Directo' : 'Con escalas'}
                 </span>
               </div>
             </div>
@@ -981,7 +983,7 @@ export default function AsientosClient({
   );
 }
 
-// Subcomponente gráfico de una butaca en el mapa
+// Subcomponente gráfico de una butaca en el mapa (sin iconos, tipografía nítida y colores vivos)
 function SeatButtonGraphic({
   seat,
   isSelected,
@@ -995,19 +997,17 @@ function SeatButtonGraphic({
   extraLabel?: string;
   onClick: () => void;
 }) {
-  const isOccupied =
-    seat.status === 'OCCUPIED' ||
-    MOCKUP_OCCUPIED_SEATS.has(`${seat.rowNumber}${seat.columnLetter}`);
+  const isOccupied = seat.status === 'OCCUPIED';
   const isLockedByOther = seat.status === 'LOCKED';
   const isFirstClass = seat.rowNumber <= 2;
 
-  // 1. Si está seleccionada por el usuario (ROJO)
+  // 1. Si está seleccionada por el usuario (ROJO VIVO)
   if (isSelected) {
     return (
       <button
         type="button"
         onClick={onClick}
-        className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-[#E11D48] text-white font-extrabold text-[11px] flex items-center justify-center shadow-md scale-105 transition-transform cursor-pointer border border-[#c90037]"
+        className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-[#E11D48] text-white font-extrabold text-[11px] flex items-center justify-center shadow-md shadow-rose-600/30 scale-105 transition-transform cursor-pointer border border-[#be123c]"
         title={`${seat.rowNumber}${seat.columnLetter} (Seleccionado)`}
       >
         <span>{seat.rowNumber}{seat.columnLetter}</span>
@@ -1015,13 +1015,13 @@ function SeatButtonGraphic({
     );
   }
 
-  // 2. Ocupado (AZUL/GRIS PASTEL CON TEXTO MUTED)
+  // 2. Ocupado (GRIS/CELESTE SUAVE, SIN ICONOS)
   if (isOccupied) {
     return (
       <button
         type="button"
         disabled
-        className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-[#e0f2fe]/75 text-[#64748b] border border-[#bae6fd]/60 font-bold text-[11px] flex items-center justify-center cursor-not-allowed select-none opacity-90"
+        className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-[#e2e8f0]/90 text-[#475569] border border-[#cbd5e1] font-bold text-[11px] flex items-center justify-center cursor-not-allowed select-none opacity-85"
         title={`${seat.rowNumber}${seat.columnLetter} (Ocupado)`}
       >
         <span>{seat.rowNumber}{seat.columnLetter}</span>
@@ -1029,13 +1029,13 @@ function SeatButtonGraphic({
     );
   }
 
-  // 3. Bloqueado temporalmente por otro usuario (ÁMBAR CON CANDADO)
+  // 3. Bloqueado temporalmente por otro usuario (ÁMBAR VIVO)
   if (isLockedByOther) {
     return (
       <button
         type="button"
         disabled
-        className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-amber-500/20 text-amber-700 border border-amber-400 font-bold text-[10px] flex items-center justify-center cursor-not-allowed select-none"
+        className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[10px] flex items-center justify-center cursor-not-allowed select-none"
         title={`${seat.rowNumber}${seat.columnLetter} (Bloqueado por otro usuario)`}
       >
         <span className="material-symbols-outlined text-[12px] mr-0.5">lock</span>
@@ -1044,44 +1044,43 @@ function SeatButtonGraphic({
     );
   }
 
-  // 4. Asiento con precio extra (+ $14k o +Leg)
+  // 4. Asiento con precio extra (+ $14k o +Leg) - SIN ICONOS
   if (isExtraPrice) {
     return (
       <button
         type="button"
         onClick={onClick}
-        className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-white border border-gray-300 hover:border-[#E11D48] hover:bg-rose-50/30 text-gray-800 font-bold text-[10px] flex flex-col items-center justify-center transition-all cursor-pointer shadow-sm leading-tight"
+        className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-white border border-slate-300 hover:border-[#E11D48] hover:bg-rose-50/40 text-slate-800 font-bold text-[10px] flex flex-col items-center justify-center transition-all cursor-pointer shadow-sm leading-tight"
         title={`${seat.rowNumber}${seat.columnLetter}`}
       >
         <span className="leading-none">{seat.rowNumber}{seat.columnLetter}</span>
-        <span className={`text-[8px] font-black leading-none mt-0.5 ${extraLabel === '+Leg' ? 'text-[#E11D48]' : 'text-gray-700'}`}>
+        <span className={`text-[8px] font-black leading-none mt-0.5 ${extraLabel === '+Leg' ? 'text-[#E11D48]' : 'text-slate-600'}`}>
           {extraLabel}
         </span>
       </button>
     );
   }
 
-  // 5. Asientos First Class (Filas 1 y 2: azul claro con icono persona)
+  // 5. Asientos First Class (Filas 1 y 2: azul cielo vivo, SIN ICONO DE PERSONA)
   if (isFirstClass) {
     return (
       <button
         type="button"
         onClick={onClick}
-        className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-[#e0f2fe] border border-[#bae6fd] hover:bg-[#bae6fd] text-[#0369a1] font-bold text-[10px] flex flex-col items-center justify-center transition-all cursor-pointer shadow-sm leading-tight"
-        title={`${seat.rowNumber}${seat.columnLetter}`}
+        className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-[#e0f2fe] border border-[#7dd3fc] hover:bg-[#bae6fd] hover:border-[#38bdf8] text-[#0369a1] font-bold text-[11px] flex items-center justify-center transition-all cursor-pointer shadow-sm"
+        title={`${seat.rowNumber}${seat.columnLetter} (Primera Clase)`}
       >
-        <span className="leading-none">{seat.rowNumber}{seat.columnLetter}</span>
-        <span className="material-symbols-outlined text-[10px] leading-none text-[#0284c7] mt-0.5">person</span>
+        <span>{seat.rowNumber}{seat.columnLetter}</span>
       </button>
     );
   }
 
-  // 6. Asiento disponible normal en Economy (blanco con borde gris y texto oscuro)
+  // 6. Asiento disponible normal en Economy (blanco nítido, borde slate, SIN ICONOS)
   return (
     <button
       type="button"
       onClick={onClick}
-      className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-white border border-gray-300 hover:border-[#E11D48] hover:bg-rose-50/30 text-gray-800 font-bold text-[11px] flex items-center justify-center transition-all cursor-pointer shadow-sm"
+      className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-white border border-slate-300 hover:border-[#E11D48] hover:bg-rose-50/40 text-slate-800 font-bold text-[11px] flex items-center justify-center transition-all cursor-pointer shadow-sm"
       title={`${seat.rowNumber}${seat.columnLetter}`}
     >
       <span>{seat.rowNumber}{seat.columnLetter}</span>
