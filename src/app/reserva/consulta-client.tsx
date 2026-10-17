@@ -2,7 +2,19 @@
 
 import { useState, type FormEvent } from 'react';
 import { bookingPublicLookupSchema } from '@/lib/validation';
-import { formatArs, formatDayMonth, formatTime } from '@/lib/format';
+import { formatArs } from '@/lib/format';
+import {
+  bookingStatusPresentation,
+  cabinClassLabel,
+  flightRouteLabel,
+  flightSchedule,
+  passengerDocumentLabel,
+  passengerName,
+  passengerSeatAria,
+  passengerSeatLabel,
+  type BookingTone,
+  type PublicBookingView,
+} from '@/lib/public-booking-view';
 
 /**
  * Consulta publica de una reserva (US-14A).
@@ -11,6 +23,9 @@ import { formatArs, formatDayMonth, formatTime } from '@/lib/format';
  * la misma normalizacion de codigo/apellido, para que el cliente y el servidor
  * nunca discrepen. La autoridad sigue siendo el servidor: la validacion local
  * es solo para dar feedback inmediato antes de la peticion.
+ *
+ * Toda la logica de presentacion vive en `public-booking-view.ts`; aca solo se
+ * compone el markup (accesible y responsive).
  */
 
 /** Mensajes exactos exigidos por la historia. */
@@ -20,74 +35,21 @@ const NOT_FOUND_MESSAGE =
 const UNAVAILABLE_MESSAGE =
   'No pudimos conectar con el servicio de consultas. Intente nuevamente en unos instantes.';
 
-/**
- * Respuesta publica del endpoint (`toPublicBookingView` en
- * `src/lib/public-booking.ts`). En el navegador las fechas llegan como ISO 8601.
- */
-type ConsultaBooking = {
-  bookingCode: string;
-  status: string;
-  tripType: string;
-  cabinClass: string;
-  passengersCount: number;
-  totalAmount: number;
-  currency: string;
-  createdAt: string;
-  flights: Array<{
-    flightCode: string;
-    origin: { iataCode: string; city: string; name: string };
-    destination: { iataCode: string; city: string; name: string };
-    departureAt: string;
-    arrivalAt: string;
-    status: string;
-    isReturn: boolean;
-    price: number;
-    fare: { name: string; cabinClass: string };
-  }>;
-  passengers: Array<{
-    firstName: string;
-    lastName: string;
-    documentType: string;
-    documentNumber: string;
-    seatNumber: string | null;
-    checkInStatus: string;
-  }>;
-};
-
 type ApiErrorBody = {
   ok: false;
   error: { code?: string; message: string; details?: Array<{ campo: string; mensaje: string }> };
 };
-type ApiOkBody = { ok: true; data: ConsultaBooking };
+type ApiOkBody = { ok: true; data: PublicBookingView };
 type ApiBody = ApiOkBody | ApiErrorBody | null;
 
 type FieldErrors = { code?: string; lastName?: string };
 
-const STATUS_LABEL: Record<string, { text: string; tone: 'ok' | 'warn' | 'bad' | 'info' }> = {
-  PENDING: { text: 'Pago pendiente', tone: 'warn' },
-  CONFIRMED: { text: 'Compra confirmada', tone: 'ok' },
-  PAID: { text: 'Compra pagada', tone: 'ok' },
-  BOARDED: { text: 'Embarque realizado', tone: 'info' },
-  CANCELLED: { text: 'Reserva cancelada', tone: 'bad' },
-  COMPLETED: { text: 'Vuelo completado', tone: 'info' },
-  NO_SHOW: { text: 'Pasajero ausente', tone: 'bad' },
-};
-
-const TONE_CLASS: Record<'ok' | 'warn' | 'bad' | 'info', string> = {
+const TONE_CLASS: Record<BookingTone, string> = {
   ok: 'bg-[#DCF5EA] text-[#0F9D6B]',
   warn: 'bg-[#FFF4E0] text-[#B45309]',
   bad: 'bg-[#FFE3EA] text-[#E11D48]',
   info: 'bg-[#E6ECFF] text-[#2D0F63]',
 };
-
-const CABIN_LABEL: Record<string, string> = {
-  ECONOMY: 'Economy',
-  PREMIUM: 'Premium',
-  BUSINESS: 'Business',
-  FIRST: 'First',
-};
-
-const cabinLabel = (value: string) => CABIN_LABEL[value] ?? value;
 
 /** Logo de marca (mismo glifo que el resto de la app). */
 function Logo() {
@@ -107,10 +69,12 @@ export default function ConsultaClient() {
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [alert, setAlert] = useState<string | null>(null);
-  const [result, setResult] = useState<ConsultaBooking | null>(null);
+  const [result, setResult] = useState<PublicBookingView | null>(null);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // El detalle anterior se descarta al iniciar una consulta nueva: nunca se
+    // muestra la reserva previa mientras se resuelve (o falla) la siguiente.
     setResult(null);
     setAlert(null);
     setFieldErrors({});
@@ -249,7 +213,7 @@ export default function ConsultaClient() {
                   maxLength={9}
                   name="code"
                   onChange={(event) => setCode(event.target.value.toUpperCase())}
-                  placeholder="XK9P2L"
+                  placeholder="ABC123"
                   spellCheck={false}
                   type="text"
                   value={code}
@@ -291,7 +255,7 @@ export default function ConsultaClient() {
                   maxLength={80}
                   name="lastName"
                   onChange={(event) => setLastName(event.target.value)}
-                  placeholder="Rodríguez"
+                  placeholder="Apellido"
                   spellCheck={false}
                   type="text"
                   value={lastName}
@@ -352,9 +316,14 @@ export default function ConsultaClient() {
   );
 }
 
-/** Detalle de la reserva encontrada. Solo muestra los datos que devuelve el endpoint. */
-function ReservaDetalle({ booking }: { booking: ConsultaBooking }) {
-  const status = STATUS_LABEL[booking.status] ?? { text: booking.status, tone: 'info' as const };
+/**
+ * Detalle de la reserva encontrada. Solo muestra los datos que devuelve el
+ * endpoint. Se exporta para poder renderizarlo en las pruebas de la vista.
+ */
+export function ReservaDetalle({ booking }: { booking: PublicBookingView }) {
+  const status = bookingStatusPresentation(booking.status);
+  const cabin = cabinClassLabel(booking.cabinClass || booking.flights[0]?.fare?.cabinClass);
+  const passengerCount = booking.passengersCount ?? booking.passengers.length;
 
   return (
     <section
@@ -371,44 +340,50 @@ function ReservaDetalle({ booking }: { booking: ConsultaBooking }) {
         <span
           className={`inline-block rounded-full px-3 py-1 font-label-sm text-label-sm font-bold ${TONE_CLASS[status.tone]}`}
         >
-          {status.text}
+          {status.label}
         </span>
       </div>
 
       <div className="flex flex-col gap-3">
-        {booking.flights.map((flight, index) => (
-          <div
-            className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-surface-container-low rounded-lg p-3"
-            key={`${flight.flightCode}-${index}`}
-          >
-            <div>
-              <span className="font-label-sm text-label-sm uppercase tracking-wider text-outline">
-                Vuelo
-              </span>
-              <p className="font-body-md text-body-md text-on-surface font-bold">
-                {flight.flightCode} · {flight.origin.iataCode} → {flight.destination.iataCode}
-                {flight.isReturn && (
-                  <span className="ml-2 font-label-sm text-label-sm text-primary">Regreso</span>
+        {booking.flights.map((flight, index) => {
+          const schedule = flightSchedule(flight.departureAt, flight.arrivalAt);
+          return (
+            <div
+              className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-surface-container-low rounded-lg p-3"
+              key={`${flight.flightCode}-${index}`}
+            >
+              <div>
+                <span className="font-label-sm text-label-sm uppercase tracking-wider text-outline">
+                  Vuelo
+                </span>
+                <p className="font-body-md text-body-md text-on-surface font-bold">
+                  {flightRouteLabel(flight)}
+                  {flight.isReturn && (
+                    <span className="ml-2 font-label-sm text-label-sm text-primary">Regreso</span>
+                  )}
+                </p>
+                <p className="font-body-sm text-body-sm text-on-surface-variant">
+                  {[flight.fare?.name, cabinClassLabel(flight.fare?.cabinClass)]
+                    .filter((value) => value && value !== '—')
+                    .join(' · ') || 'Tarifa a confirmar'}
+                </p>
+              </div>
+              <div>
+                <span className="font-label-sm text-label-sm uppercase tracking-wider text-outline">
+                  Salida
+                </span>
+                <p className="font-body-md text-body-md text-on-surface font-bold">
+                  {schedule.date} · {schedule.time}
+                </p>
+                {flight.status && (
+                  <p className="font-body-sm text-body-sm text-on-surface-variant">
+                    Estado del vuelo: {flight.status}
+                  </p>
                 )}
-              </p>
-              <p className="font-body-sm text-body-sm text-on-surface-variant">
-                {flight.fare.name} · {cabinLabel(flight.fare.cabinClass)}
-              </p>
+              </div>
             </div>
-            <div>
-              <span className="font-label-sm text-label-sm uppercase tracking-wider text-outline">
-                Salida
-              </span>
-              <p className="font-body-md text-body-md text-on-surface font-bold">
-                {formatDayMonth(flight.departureAt)} · {formatTime(flight.departureAt)} →{' '}
-                {formatTime(flight.arrivalAt)}
-              </p>
-              <p className="font-body-sm text-body-sm text-on-surface-variant">
-                Estado del vuelo: {flight.status}
-              </p>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="border border-outline-variant/60 rounded-lg overflow-x-auto">
@@ -431,34 +406,74 @@ function ReservaDetalle({ booking }: { booking: ConsultaBooking }) {
             </tr>
           </thead>
           <tbody>
-            {booking.passengers.map((passenger, index) => (
-              <tr
-                className="border-t border-outline-variant/40 text-on-surface"
-                key={`${passenger.lastName}-${index}`}
-              >
-                <td className="px-3 py-2 font-semibold">
-                  {passenger.firstName} {passenger.lastName}
-                </td>
-                <td className="px-3 py-2">
-                  {passenger.documentType} {passenger.documentNumber}
-                </td>
-                <td className="px-3 py-2">{passenger.seatNumber ?? '—'}</td>
-                <td className="px-3 py-2">{cabinLabel(booking.cabinClass)}</td>
-              </tr>
-            ))}
+            {booking.passengers.map((passenger, index) => {
+              const document = passengerDocumentLabel(
+                passenger.documentType,
+                passenger.documentNumber,
+              );
+              return (
+                <tr
+                  className="border-t border-outline-variant/40 text-on-surface"
+                  key={`${passenger.lastName}-${index}`}
+                >
+                  <td className="px-3 py-2 font-semibold">
+                    {passengerName(passenger.firstName, passenger.lastName) || '—'}
+                  </td>
+                  <td className="px-3 py-2 font-mono">{document ?? '—'}</td>
+                  <td className="px-3 py-2" aria-label={passengerSeatAria(passenger.seatNumber)}>
+                    {passengerSeatLabel(passenger.seatNumber)}
+                  </td>
+                  <td className="px-3 py-2">{cabin}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
-      <div className="flex items-center justify-between gap-2 pt-1">
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
         <span className="font-body-sm text-body-sm text-on-surface-variant">
-          {booking.passengersCount}{' '}
-          {booking.passengersCount === 1 ? 'pasajero' : 'pasajeros'}
+          {passengerCount} {passengerCount === 1 ? 'pasajero' : 'pasajeros'}
         </span>
         <span className="font-label-lg text-label-lg text-primary-container font-bold">
           Total: {formatArs(booking.totalAmount)} {booking.currency}
         </span>
       </div>
+
+      {/*
+        Acciones de documento: presentes como elementos de interfaz, pero
+        deshabilitadas en esta tarea. No se simula ninguna descarga.
+      */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-outline-variant/60 pt-4">
+        <button
+          aria-describedby="pdf-pasaje-note"
+          className="h-11 px-4 rounded-lg bg-secondary text-on-secondary font-label-lg text-label-lg font-bold flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+          disabled
+          type="button"
+        >
+          <span aria-hidden="true" className="material-symbols-outlined text-base">
+            download
+          </span>
+          Descargar Pasaje PDF
+        </button>
+        <button
+          aria-describedby="pdf-factura-note"
+          className="h-11 px-4 rounded-lg bg-surface-container-low text-primary-container border border-outline-variant font-label-lg text-label-lg font-bold flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+          disabled
+          type="button"
+        >
+          <span aria-hidden="true" className="material-symbols-outlined text-base">
+            download
+          </span>
+          Descargar Factura PDF
+        </button>
+      </div>
+      <p className="sr-only" id="pdf-pasaje-note">
+        La descarga del pasaje en PDF todavía no está disponible.
+      </p>
+      <p className="sr-only" id="pdf-factura-note">
+        La descarga de la factura en PDF todavía no está disponible.
+      </p>
     </section>
   );
 }
