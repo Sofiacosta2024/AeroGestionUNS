@@ -6,6 +6,7 @@ const isPublic = createRouteMatcher([
   '/sign-up(.*)',
   '/reserva(.*)',
   '/api/reservas/consulta',
+  '/api/v1/reservas/consulta',
   '/api/webhooks(.*)',
 ]);
 const isAdmin = createRouteMatcher(['/admin(.*)', '/api/admin(.*)']);
