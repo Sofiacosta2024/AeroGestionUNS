@@ -1,8 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useClerk } from '@clerk/nextjs';
 import { formatDayMonth, formatDuration, formatFullDate, formatTime, formatWeekday } from '@/lib/format';
 import { localWeekDays } from '@/lib/dates';
 import type {
@@ -12,6 +10,7 @@ import type {
   WeeklyFareDay,
 } from '@/lib/view-models';
 import type { SerializedPrice } from '@/lib/flights';
+import SiteHeader from '@/components/SiteHeader';
 
 const TZ = 'America/Argentina/Buenos_Aires';
 const FLIGHT_PAGE_SIZE = 20;
@@ -24,17 +23,6 @@ const FLEET_IMG =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCLDPhxkwdDvpLHuGzES1myvcdH258uoB2RRlHnZFL3B7dQqE0xT7sbyFIng7ClMZ-yqFZIU0yIy7gAhjYnUbKF8wrWFEwWGczPInNzM_Y6fzxH2vTHA1q7e7eBDb-DaZA7IVnuNQ_XMnOZOOz5bznlTseZved6oT30VJkdCMly2qQwMPEPaPsM4N0OvFbwmzuMtXwW20Qn--T1QbkDKjsSqqRqeVXJr-7FcjUmEs0caK4iJgQeCX_F';
 const CABIN_IMG =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuC4ybXDxZWCT78pC3wAMS73Ak287xKNdmQbw8MVEfdsDQ7CBUupAKb0Y_xReJTdTLOuN86EZr8bM4l0F70g7hlxPz2Ys7HrIonCOyowsohbuqtISnkFDVJXjuOK9tvH4Dz_Nwn8IGAVx2kJzXofHANEbODisVrHVv59722gYufGZY0cZEqhvrGnq6WBgAygX-eXIFbxqXQkefS396NJQdsj4uyA75UDj-vZ6cUfUeb-4EVK6d48pVw5';
-
-function Logo() {
-  return (
-    <div className="w-9 h-9 rounded-xl bg-primary ring-1 ring-white/10 flex items-center justify-center shrink-0">
-      <svg className="w-6 h-6 text-[#E11D48]" fill="none" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-        <path d="M9 20.5L25.5 12L21 21.5L29 27L24 28L18 24.5L14 28.5L13.5 24L9 20.5Z" fill="currentColor" />
-        <circle cx="28.5" cy="13.5" fill="#f43f5e" r="2.8" />
-      </svg>
-    </div>
-  );
-}
 
 /** Mismo formato de importes que el HTML original ("$64.200" + etiqueta ARS). */
 const MONEY = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 });
@@ -64,17 +52,6 @@ const STEPS: { n: number; label: string; icon?: string; state: 'active' | 'upcom
   { n: 4, label: '4. Confirmación', state: 'ghost' },
 ];
 
-/**
- * Secciones del menu que todavia no tienen pantalla propia. Antes eran `<a href="#">`,
- * que al hacer clic solo llevaban al tope de la pagina sin explicar nada; ahora
- * avisan que estan en construccion.
- */
-const PENDING_SECTIONS: { path: string; label: string; short: string }[] = [
-  { path: 'mis-reservas', label: 'Mis Reservas', short: 'Reservas' },
-  { path: 'check-in-online', label: 'Check-in Online', short: 'Check-in' },
-  { path: 'alta-de-vuelos-admin', label: 'Alta de Vuelos [Admin]', short: 'Admin' },
-];
-
 type Selection = { flightId: string; fareId: string };
 
 type ApiEnvelope<T> = { ok: true; data: T } | { ok: false; error: { message: string } };
@@ -92,8 +69,6 @@ const cheapestIndex = (prices: SerializedPrice[]) =>
   prices.reduce((best, p, i) => (p.price < prices[best]!.price ? i : best), 0);
 
 export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap }) {
-  const router = useRouter();
-  const { signOut } = useClerk();
   const [tripType, setTripType] = useState<'ROUND_TRIP' | 'ONE_WAY'>('ROUND_TRIP');
   const [origin, setOrigin] = useState(bootstrap.initialQuery.origin);
   const [destination, setDestination] = useState(bootstrap.initialQuery.destination);
@@ -127,7 +102,6 @@ export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [clock, setClock] = useState('--:--:--');
   // Solo ofrece destinos que tienen ruta desde el origen elegido
   const destinations = useMemo(() => {
     const valid = new Set(
@@ -142,23 +116,6 @@ export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap
     const id = setTimeout(() => setNotice(null), 5000);
     return () => clearTimeout(id);
   }, [notice]);
-
-  // Hora oficial ART en vivo (reemplaza el texto estatico del HTML original).
-  useEffect(() => {
-    const tick = () =>
-      setClock(
-        new Intl.DateTimeFormat('es-AR', {
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: false,
-          timeZone: TZ,
-        }).format(new Date()),
-      );
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, []);
 
   const week = useMemo(() => localWeekDays(date), [date]);
   const fareByDate = useMemo(
@@ -251,12 +208,6 @@ if (slotDef.to) flightQuery.set('timeTo', slotDef.to);
   }
 }
 
-  async function logout() {
-     await signOut({ redirectUrl: '/login' });
-
-    router.refresh();
-  }
-
   const cheapestDay = useMemo(() => {
     let best: { date: string; price: number } | null = null;
     for (const w of weeklyFares) {
@@ -267,181 +218,7 @@ if (slotDef.to) flightQuery.set('timeTo', slotDef.to);
 
   return (
     <>
-      <header className="fixed top-0 left-0 w-full z-50 bg-primary-container shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
-        <div className="min-h-20 w-full px-4 sm:px-space-lg lg:px-margin py-3 lg:py-0 flex flex-wrap items-center justify-between gap-space-sm lg:gap-space-md">
-          <div className="flex items-center gap-space-md min-w-0 shrink-0">
-            <Logo />
-            <div className="flex flex-col min-w-0">
-              <div className="flex items-center gap-space-xs">
-                <span className="font-headline-sm text-headline-sm text-surface-container-lowest leading-none whitespace-nowrap">
-                  AeroGestión
-                </span>
-                <span className="font-headline-sm text-headline-sm text-secondary leading-none whitespace-nowrap">
-                  UNS
-                </span>
-              </div>
-              <span className="font-label-sm text-label-sm text-primary-fixed-dim uppercase tracking-wider leading-tight hidden sm:block">
-                Sistema Operativo Aeronáutico
-              </span>
-            </div>
-            <div className="hidden xl:flex items-center gap-space-xs bg-primary px-space-sm py-space-xs rounded-full ml-space-xs">
-              <span className="w-2 h-2 rounded-full bg-secondary-container animate-pulse" />
-              <span className="font-code-telemetry text-code-telemetry text-tertiary-fixed">
-                BHI HUB · OPERATIVO
-              </span>
-            </div>
-          </div>
-
-          <nav
-            aria-label="Navegacion principal"
-            className="hidden lg:flex items-center gap-space-xs"
-            data-active-classes="bg-secondary text-on-secondary font-label-lg rounded-lg shadow-[0_1px_8px_rgba(0,0,0,0.04)]"
-          >
-            <a
-              aria-current="page"
-              className="px-space-md py-space-sm transition-colors bg-secondary text-on-secondary font-label-lg rounded-lg shadow-[0_1px_8px_rgba(0,0,0,0.04)]"
-              data-path="buscar-vuelos"
-              href="/vuelos"
-            >
-              Buscar Vuelos
-            </a>
-            <a
-              className="px-space-md py-space-sm rounded-lg font-label-lg text-label-lg text-primary-fixed-dim hover:bg-primary hover:text-on-primary transition-colors"
-              data-path="consultar-reserva"
-              href="/reserva"
-            >
-              Consultar Reserva
-            </a>
-            {PENDING_SECTIONS.map((s) => (
-              <button
-                key={s.path}
-                className="px-space-md py-space-sm rounded-lg font-label-lg text-label-lg text-primary-fixed-dim hover:bg-primary hover:text-on-primary transition-colors"
-                data-path={s.path}
-                onClick={() => setNotice(s.label)}
-                type="button"
-              >
-                {s.label}
-              </button>
-            ))}
-          </nav>
-
-          <div className="flex items-center gap-space-sm sm:gap-space-md shrink-0">
-            <div className="hidden sm:flex flex-col items-end">
-              <span className="font-code-telemetry text-code-telemetry text-primary-fixed leading-tight">
-                {clock} UTC-3
-              </span>
-              <span className="font-label-sm text-label-sm text-outline-variant uppercase">
-                Hora Oficial ART
-              </span>
-            </div>
-            <div className="relative flex items-center justify-center">
-              <button
-                aria-label="Notificaciones operativas"
-                className="w-10 h-10 rounded-full flex items-center justify-center text-primary-fixed-dim hover:bg-primary hover:text-on-primary transition-colors"
-                onClick={() => setNotice('Centro de Control BHI')}
-                type="button"
-              >
-                <span className="material-symbols-outlined">notifications</span>
-              </button>
-              <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-secondary ring-2 ring-primary-container" />
-            </div>
-
-            {bootstrap.user ? (
-              <button
-                className="flex items-center gap-space-sm bg-primary/70 p-space-xs pl-space-sm rounded-full hover:bg-primary transition-colors"
-                onClick={logout}
-                title="Cerrar sesion"
-                type="button"
-              >
-                <div className="hidden md:flex flex-col text-right">
-                  <span className="font-label-md text-label-md text-surface-container-lowest leading-snug">
-                    {bootstrap.user.name}
-                  </span>
-                  <span className="font-label-sm text-label-sm text-secondary-fixed leading-none">
-                    {bootstrap.user.role}
-                  </span>
-                </div>
-                  <span className="w-8 h-8 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center font-label-md text-label-md font-bold">
-                    {bootstrap.user.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()}
-                  </span>             
-               </button>
-            ) : (
-              <div className="flex items-center gap-space-sm bg-primary/70 p-space-xs pl-space-sm rounded-full">
-                <div className="hidden md:flex flex-col text-right">
-                  <span className="font-label-md text-label-md text-surface-container-lowest leading-snug">
-                    Invitado
-                  </span>
-                  <span className="font-label-sm text-label-sm text-secondary-fixed leading-none">
-                    Sesion no iniciada
-                  </span>
-                </div>
-                <a
-                  className="font-label-md text-label-md text-secondary-fixed hover:text-on-primary transition-colors whitespace-nowrap"
-                  href="/login"
-                >
-                  Ingresar
-                </a>
-              </div>
-            )}
-          </div>
-
-          {/* La nav de escritorio es `hidden lg:flex`: sin esta fila, en movil y
-              tablet no habia ninguna via de navegacion. */}
-          <nav
-            aria-label="Navegacion principal"
-            className="flex lg:hidden order-last w-full items-center gap-space-xs overflow-x-auto"
-          >
-            <a
-              aria-current="page"
-              className="shrink-0 px-3 py-1.5 rounded-lg bg-secondary text-on-secondary font-label-md text-label-md"
-              href="/vuelos"
-            >
-              Buscar Vuelos
-            </a>
-            <a
-              className="shrink-0 px-3 py-1.5 rounded-lg font-label-md text-label-md text-primary-fixed-dim bg-primary/60"
-              href="/reserva"
-            >
-              Consultar
-            </a>
-            {PENDING_SECTIONS.map((s) => (
-              <button
-                key={s.path}
-                className="shrink-0 px-3 py-1.5 rounded-lg font-label-md text-label-md text-primary-fixed-dim bg-primary/60"
-                onClick={() => setNotice(s.label)}
-                type="button"
-              >
-                {s.short}
-              </button>
-            ))}
-          </nav>
-        </div>
-      </header>
-
-      {notice && (
-        <div
-          className="fixed top-[7.25rem] lg:top-20 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-md"
-          role="status"
-        >
-          <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-primary text-on-primary shadow-xl">
-            <span className="material-symbols-outlined text-lg text-secondary-fixed shrink-0">
-              construction
-            </span>
-            <p className="font-label-md text-label-md leading-snug flex-1">
-              <span className="font-bold">{notice}</span> está en construcción: esta
-              versión cubre búsqueda, autenticación y reservas.
-            </p>
-            <button
-              aria-label="Cerrar aviso"
-              className="text-on-primary/70 hover:text-on-primary shrink-0"
-              onClick={() => setNotice(null)}
-              type="button"
-            >
-              <span className="material-symbols-outlined text-lg">close</span>
-            </button>
-          </div>
-        </div>
-      )}
+      <SiteHeader activePath="vuelos" onNotice={setNotice} user={bootstrap.user} />
 
       <main className="w-full pt-32 lg:pt-20 bg-surface min-h-[calc(100vh-140px)]">
         <div className="flex flex-col w-full">

@@ -167,7 +167,7 @@ export default function ConsultaClient() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col items-center px-4 py-8 sm:py-12">
+    <main className="min-h-[calc(100vh-8rem)] lg:min-h-[calc(100vh-5rem)] flex flex-col items-center px-4 py-8 sm:py-12">
       <div className="w-full max-w-3xl flex flex-col gap-space-md">
         <div className="flex items-center gap-space-sm">
           <Logo />
