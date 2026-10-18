@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
   ReservaDetalle,
+  describeFacturaDownloadError,
   describePasajeDownloadError,
   pdfFilenameFromDisposition,
 } from '../../src/app/reserva/consulta-client';
@@ -14,8 +15,7 @@ import type { PublicBookingView } from '../../src/lib/public-booking-view';
  * marcado HTML estatico y verifican que:
  * - muestra unicamente los datos reales que le pasa el backend,
  * - tolera campos opcionales ausentes sin romper,
- * - habilita la descarga del pasaje (sin simular el fetch) y mantiene
- *   deshabilitada la de factura,
+ * - habilita la descarga del pasaje y de la factura (sin simular el fetch),
  * - los helpers de la descarga (nombre de archivo y mensajes de error)
  *   son seguros y no filtran detalles internos.
  */
@@ -95,7 +95,7 @@ test('detalle: no filtra datos internos que el backend no envia', () => {
   assert.doesNotMatch(html, /\b\d{8}\b/);
 });
 
-test('detalle: pasaje habilitado para descargar; factura deshabilitada', () => {
+test('detalle: pasaje y factura habilitados para descargar', () => {
   const html = render(sampleBooking());
   assert.match(html, /Descargar Pasaje PDF/);
   assert.match(html, /Descargar Factura PDF/);
@@ -106,10 +106,10 @@ test('detalle: pasaje habilitado para descargar; factura deshabilitada', () => {
       .find((segment) => segment.includes(label))
       ?.split('>')[0] ?? '';
   assert.doesNotMatch(buttonFor('Descargar Pasaje PDF'), /\sdisabled=""/, 'el boton de pasaje debe estar habilitado');
-  assert.match(buttonFor('Descargar Factura PDF'), /\sdisabled=""/, 'el boton de factura debe seguir deshabilitado');
+  assert.doesNotMatch(buttonFor('Descargar Factura PDF'), /\sdisabled=""/, 'el boton de factura debe estar habilitado');
 });
 
-test('detalle: sin apellido utilizable el pasaje queda deshabilitado', () => {
+test('detalle: sin apellido utilizable ambas descargas quedan deshabilitadas', () => {
   const html = render(
     sampleBooking({
       passengers: [
@@ -117,9 +117,10 @@ test('detalle: sin apellido utilizable el pasaje queda deshabilitado', () => {
       ],
     }),
   );
-  const pasajeTag =
-    html.split('<button').find((segment) => segment.includes('Descargar Pasaje PDF'))?.split('>')[0] ?? '';
-  assert.match(pasajeTag, /\sdisabled=""/);
+  const buttonFor = (label: string) =>
+    html.split('<button').find((segment) => segment.includes(label))?.split('>')[0] ?? '';
+  assert.match(buttonFor('Descargar Pasaje PDF'), /\sdisabled=""/);
+  assert.match(buttonFor('Descargar Factura PDF'), /\sdisabled=""/);
 });
 
 test('detalle: campos opcionales ausentes no rompen la vista', () => {
@@ -244,6 +245,50 @@ test('describePasajeDownloadError: demas fallos son genericos, sin filtrar inter
   // Ningun mensaje resultante contiene texto tipo stack trace o SQL.
   for (const status of [400, 404, 409, 422, 500]) {
     const message = describePasajeDownloadError(status, status === 409 ? 'El pasaje no está disponible para reservas canceladas' : 'Error: SELECT * FROM bookings');
+    assert.doesNotMatch(message, /SELECT|Error:|at \w+\./);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Helper de la descarga de la factura (mensajes)
+// ---------------------------------------------------------------------------
+
+test('describeFacturaDownloadError: 404 usa el mensaje exacto de no encontrado', () => {
+  assert.equal(
+    describeFacturaDownloadError(404, null),
+    'No encontramos ninguna reserva que coincida con el código y apellido ingresados. Por favor verifique sus datos.',
+  );
+});
+
+test('describeFacturaDownloadError: 409 usa el mensaje honesto del servidor', () => {
+  assert.equal(
+    describeFacturaDownloadError(409, 'La factura no está disponible hasta que el pago de la reserva sea aprobado'),
+    'La factura no está disponible hasta que el pago de la reserva sea aprobado',
+  );
+  assert.equal(
+    describeFacturaDownloadError(409, 'La factura no está disponible para esta reserva'),
+    'La factura no está disponible para esta reserva',
+  );
+  // Sin mensaje del servidor cae al generico.
+  assert.equal(
+    describeFacturaDownloadError(409, null),
+    'No pudimos generar la factura en PDF. Intente nuevamente en unos instantes.',
+  );
+});
+
+test('describeFacturaDownloadError: demas fallos son genericos, sin filtrar internals', () => {
+  const generic = 'No pudimos generar la factura en PDF. Intente nuevamente en unos instantes.';
+  for (const status of [400, 422, 500]) {
+    assert.equal(describeFacturaDownloadError(status, null), generic);
+    assert.equal(describeFacturaDownloadError(status, 'Error: SELECT * FROM payments'), generic);
+  }
+  for (const status of [400, 404, 409, 422, 500]) {
+    const message = describeFacturaDownloadError(
+      status,
+      status === 409
+        ? 'La factura no está disponible para esta reserva'
+        : 'Error: SELECT * FROM payments',
+    );
     assert.doesNotMatch(message, /SELECT|Error:|at \w+\./);
   }
 });

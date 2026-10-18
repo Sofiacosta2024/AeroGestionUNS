@@ -36,6 +36,8 @@ const UNAVAILABLE_MESSAGE =
   'No pudimos conectar con el servicio de consultas. Intente nuevamente en unos instantes.';
 const PASAJE_DOWNLOAD_FAILED_MESSAGE =
   'No pudimos generar el pasaje en PDF. Intente nuevamente en unos instantes.';
+const FACTURA_DOWNLOAD_FAILED_MESSAGE =
+  'No pudimos generar la factura en PDF. Intente nuevamente en unos instantes.';
 
 type ApiErrorBody = {
   ok: false;
@@ -344,14 +346,98 @@ export function describePasajeDownloadError(status: number, serverMessage: strin
 }
 
 /**
+ * Traduce la respuesta del endpoint de factura a un mensaje para la persona.
+ * Mismas reglas que el pasaje: 404 = no encontrado; 409 = el servidor ya
+ * explica con un mensaje honesto por que la factura no esta disponible
+ * (pago pendiente o inexistente); el resto, generico sin internals.
+ */
+export function describeFacturaDownloadError(status: number, serverMessage: string | null): string {
+  if (status === 404) return NOT_FOUND_MESSAGE;
+  if (status === 409 && serverMessage) return serverMessage;
+  return FACTURA_DOWNLOAD_FAILED_MESSAGE;
+}
+
+type DocumentKind = 'pasaje' | 'factura';
+
+const DOCUMENT_CONFIG: Record<
+  DocumentKind,
+  { endpoint: string; failedMessage: string; describeError: typeof describePasajeDownloadError }
+> = {
+  pasaje: {
+    endpoint: '/api/v1/reservas/consulta/pasaje',
+    failedMessage: PASAJE_DOWNLOAD_FAILED_MESSAGE,
+    describeError: describePasajeDownloadError,
+  },
+  factura: {
+    endpoint: '/api/v1/reservas/consulta/factura',
+    failedMessage: FACTURA_DOWNLOAD_FAILED_MESSAGE,
+    describeError: describeFacturaDownloadError,
+  },
+};
+
+/**
+ * Descarga un documento PDF desde su endpoint publico y dispara la descarga
+ * del navegador. Cualquier fallo (red, estado no ok, content-type raro) se
+ * traduce a un mensaje generico sin exponer internals. Devuelve `true` si la
+ * descarga se inicio correctamente. Logica compartida por pasaje y factura.
+ */
+async function downloadDocumentPdf(
+  kind: DocumentKind,
+  bookingCode: string,
+  lastName: string,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const config = DOCUMENT_CONFIG[kind];
+  let objectUrl: string | null = null;
+  try {
+    const response = await fetch(config.endpoint, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code: bookingCode, lastName }),
+    });
+
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as ApiErrorBody | null;
+      return {
+        ok: false,
+        message: config.describeError(response.status, body?.error?.message ?? null),
+      };
+    }
+
+    const contentType = response.headers.get('content-type') ?? '';
+    if (!contentType.includes('application/pdf')) {
+      return { ok: false, message: config.failedMessage };
+    }
+
+    const blob = await response.blob();
+    objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download =
+      pdfFilenameFromDisposition(response.headers.get('content-disposition')) ??
+      `${kind}-${bookingCode}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    return { ok: true };
+  } catch {
+    // Falla de red: no se exponen detalles internos.
+    return { ok: false, message: config.failedMessage };
+  } finally {
+    if (objectUrl !== null) URL.revokeObjectURL(objectUrl);
+  }
+}
+
+/**
  * Detalle de la reserva encontrada. Solo muestra los datos que devuelve el
  * endpoint. Se exporta para poder renderizarlo en las pruebas de la vista.
  *
- * El boton de pasaje reutiliza el mismo par codigo + apellido que autorizo la
- * consulta (el endpoint vuelve a validarlos); la factura permanece deshabilitada.
+ * Ambos botones (pasaje y factura) reutilizan el mismo par codigo + apellido
+ * que autorizo la consulta (el endpoint vuelve a validarlos). La factura solo
+ * se genera cuando existe un pago aprobado real; si no, el servidor responde
+ * 409 y se muestra su mensaje honesto.
  */
 export function ReservaDetalle({ booking }: { booking: PublicBookingView }) {
-  const [downloading, setDownloading] = useState(false);
+  const [downloading, setDownloading] = useState<DocumentKind | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
   // Cualquier apellido de la reserva autoriza la descarga: el endpoint exige
@@ -363,47 +449,16 @@ export function ReservaDetalle({ booking }: { booking: PublicBookingView }) {
   const cabin = cabinClassLabel(booking.cabinClass || booking.flights[0]?.fare?.cabinClass);
   const passengerCount = booking.passengersCount ?? booking.passengers.length;
 
-  async function onDownloadPasaje() {
+  async function onDownload(kind: DocumentKind) {
     // Evita descargas multiples mientras una sigue en curso.
     if (downloading) return;
     setDownloadError(null);
-    setDownloading(true);
-    let objectUrl: string | null = null;
+    setDownloading(kind);
     try {
-      const response = await fetch('/api/v1/reservas/consulta/pasaje', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ code: booking.bookingCode, lastName: lookupLastName }),
-      });
-
-      if (!response.ok) {
-        const body = (await response.json().catch(() => null)) as ApiErrorBody | null;
-        setDownloadError(describePasajeDownloadError(response.status, body?.error?.message ?? null));
-        return;
-      }
-
-      const contentType = response.headers.get('content-type') ?? '';
-      if (!contentType.includes('application/pdf')) {
-        setDownloadError(PASAJE_DOWNLOAD_FAILED_MESSAGE);
-        return;
-      }
-
-      const blob = await response.blob();
-      objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = objectUrl;
-      link.download =
-        pdfFilenameFromDisposition(response.headers.get('content-disposition')) ??
-        `pasaje-${booking.bookingCode}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } catch {
-      // Falla de red: no se exponen detalles internos.
-      setDownloadError(PASAJE_DOWNLOAD_FAILED_MESSAGE);
+      const result = await downloadDocumentPdf(kind, booking.bookingCode, lookupLastName);
+      if (!result.ok) setDownloadError(result.message);
     } finally {
-      if (objectUrl !== null) URL.revokeObjectURL(objectUrl);
-      setDownloading(false);
+      setDownloading(null);
     }
   }
 
@@ -523,19 +578,20 @@ export function ReservaDetalle({ booking }: { booking: PublicBookingView }) {
       </div>
 
       {/*
-        Acciones de documento: el pasaje se descarga desde el endpoint publico
-        reutilizando el codigo y apellido de la consulta; la factura sigue
-        deshabilitada en esta tarea. No se simula ninguna descarga.
+        Acciones de documento: pasaje y factura se descargan desde sus
+        endpoints publicos reutilizando el codigo y apellido de la consulta.
+        La factura solo se genera con un pago aprobado real; nunca se simula
+        una descarga ni una emision inexistente.
       */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-outline-variant/60 pt-4">
         <button
           aria-describedby="pdf-pasaje-note"
           className="h-11 px-4 rounded-lg bg-secondary text-on-secondary font-label-lg text-label-lg font-bold flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-          disabled={downloading || lookupLastName === ''}
-          onClick={onDownloadPasaje}
+          disabled={downloading !== null || lookupLastName === ''}
+          onClick={() => onDownload('pasaje')}
           type="button"
         >
-          {downloading && (
+          {downloading === 'pasaje' && (
             <span aria-hidden="true" className="material-symbols-outlined animate-spin text-base">
               progress_activity
             </span>
@@ -543,24 +599,34 @@ export function ReservaDetalle({ booking }: { booking: PublicBookingView }) {
           <span aria-hidden="true" className="material-symbols-outlined text-base">
             download
           </span>
-          {downloading ? 'Generando PDF…' : 'Descargar Pasaje PDF'}
+          {downloading === 'pasaje' ? 'Generando PDF…' : 'Descargar Pasaje PDF'}
         </button>
         <button
           aria-describedby="pdf-factura-note"
           className="h-11 px-4 rounded-lg bg-surface-container-low text-primary-container border border-outline-variant font-label-lg text-label-lg font-bold flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-          disabled
+          disabled={downloading !== null || lookupLastName === ''}
+          onClick={() => onDownload('factura')}
           type="button"
         >
+          {downloading === 'factura' && (
+            <span aria-hidden="true" className="material-symbols-outlined animate-spin text-base">
+              progress_activity
+            </span>
+          )}
           <span aria-hidden="true" className="material-symbols-outlined text-base">
             download
           </span>
-          Descargar Factura PDF
+          {downloading === 'factura' ? 'Generando PDF…' : 'Descargar Factura PDF'}
         </button>
       </div>
-      {/* Región viva de la descarga del pasaje: errores para lectores de pantalla. */}
+      {/* Región viva de las descargas: errores para lectores de pantalla. */}
       <div aria-live="assertive" role="status">
         {downloading && (
-          <p className="sr-only">Generando el pasaje en PDF, por favor espere.</p>
+          <p className="sr-only">
+            {downloading === 'pasaje'
+              ? 'Generando el pasaje en PDF, por favor espere.'
+              : 'Generando la factura en PDF, por favor espere.'}
+          </p>
         )}
         {downloadError && (
           <p
@@ -575,7 +641,8 @@ export function ReservaDetalle({ booking }: { booking: PublicBookingView }) {
         La descarga del pasaje en PDF usa el código y apellido de la consulta.
       </p>
       <p className="sr-only" id="pdf-factura-note">
-        La descarga de la factura en PDF todavía no está disponible.
+        La descarga de la factura en PDF usa el código y apellido de la consulta; requiere un pago
+        aprobado.
       </p>
     </section>
   );

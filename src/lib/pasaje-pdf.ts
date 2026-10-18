@@ -67,7 +67,7 @@ export type PasajeInput = {
   }>;
 };
 
-type Line = {
+export type Line = {
   text: string;
   bold?: boolean;
   size?: number;
@@ -280,7 +280,16 @@ function renderPage(placed: PlacedLine[]): string {
  * tabla xref con offsets reales y trailer.
  */
 export function buildPasajePdf(input: PasajeInput): Uint8Array {
-  const pages = paginate(buildLines(input));
+  return assemblePdfLines(buildLines(input));
+}
+
+/**
+ * Ensambla lineas de texto (con su tipografia) en un PDF 1.4 completo.
+ * Motor compartido del pasaje y la factura (US-14A): no se duplica la
+ * estructura de objetos, fuentes WinAnsi ni la tabla xref.
+ */
+export function assemblePdfLines(lines: Line[]): Uint8Array {
+  const pages = paginate(lines);
   const pageCount = pages.length;
 
   // Numeracion de objetos: catalogo (1), paginas (2), paginas (3..2+n),
