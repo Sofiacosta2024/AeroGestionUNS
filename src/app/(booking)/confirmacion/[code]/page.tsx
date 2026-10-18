@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { loadCheckout, toReceipt } from '@/lib/checkout';
+import { toTravelDocuments } from '@/lib/travel-documents';
 import { prisma } from '@/lib/prisma';
 import {
   BookingSteps,
@@ -23,6 +24,7 @@ export default async function ConfirmationPage({
   if (!payment || booking.status === 'CANCELLED')
     redirect(`/pago/${booking.bookingCode}`);
   const receipt = toReceipt(booking);
+  const documents = toTravelDocuments(booking);
   const lastEmail = await prisma.auditLog.findFirst({
     where: { entity: 'Payment', entityId: payment.id, action: 'PAYMENT_EMAIL' },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -115,7 +117,11 @@ export default async function ConfirmationPage({
             </div>
           </article>
           <aside>
-            <ConfirmationActions code={receipt.code} initialEmail={email} />
+            <ConfirmationActions
+              code={receipt.code}
+              initialEmail={email}
+              documents={documents}
+            />
             <div className="info-box">
               <h3>Antes de viajar</h3>
               <p>

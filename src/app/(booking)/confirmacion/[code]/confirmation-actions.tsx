@@ -1,17 +1,33 @@
 'use client';
 import { useRef, useState } from 'react';
 import type { EmailResult } from '@/lib/payment-email';
+import type { TravelDocuments } from '@/lib/travel-documents';
 
 export default function ConfirmationActions({
   code,
   initialEmail,
+  documents,
 }: {
   code: string;
   initialEmail: EmailResult | null;
+  documents: TravelDocuments;
 }) {
   const busy = useRef(false);
   const [sending, setSending] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState<'pass' | 'invoice' | null>(null);
   const [email, setEmail] = useState(initialEmail);
+  async function download(kind: 'pass' | 'invoice') {
+    if (pdfBusy) return;
+    setPdfBusy(kind);
+    try {
+      const { buildPassPdf, buildInvoicePdf } = await import('./pdf-documents');
+      const pdf =
+        kind === 'pass' ? buildPassPdf(documents) : buildInvoicePdf(documents);
+      pdf.save(`${kind === 'pass' ? 'pasaje' : 'factura'}-${documents.bookingCode}.pdf`);
+    } finally {
+      setPdfBusy(null);
+    }
+  }
   async function resend() {
     if (busy.current) return;
     busy.current = true;
@@ -44,15 +60,23 @@ export default function ConfirmationActions({
     <section className="booking-card documentation">
       <h2>Documentación</h2>
       <p className="muted">
-        Guardá el comprobante de tu reserva. Podés elegir “Guardar como PDF” en
-        el diálogo de impresión.
+        Descargá el pasaje de cada viajero y la factura de tu compra.
       </p>
       <button
         className="booking-button"
         type="button"
-        onClick={() => window.print()}
+        disabled={pdfBusy !== null}
+        onClick={() => download('pass')}
       >
-        ↓ Imprimir / guardar comprobante PDF
+        {pdfBusy === 'pass' ? 'Generando…' : '↓ Descargar pasaje PDF'}
+      </button>
+      <button
+        className="booking-button secondary"
+        type="button"
+        disabled={pdfBusy !== null}
+        onClick={() => download('invoice')}
+      >
+        {pdfBusy === 'invoice' ? 'Generando…' : '↓ Descargar factura PDF'}
       </button>
       <button
         className="booking-button secondary"
