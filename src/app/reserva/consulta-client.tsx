@@ -34,6 +34,8 @@ const NOT_FOUND_MESSAGE =
   'No encontramos ninguna reserva que coincida con el código y apellido ingresados. Por favor verifique sus datos.';
 const UNAVAILABLE_MESSAGE =
   'No pudimos conectar con el servicio de consultas. Intente nuevamente en unos instantes.';
+const PASAJE_DOWNLOAD_FAILED_MESSAGE =
+  'No pudimos generar el pasaje en PDF. Intente nuevamente en unos instantes.';
 
 type ApiErrorBody = {
   ok: false;
@@ -317,13 +319,93 @@ export default function ConsultaClient() {
 }
 
 /**
+ * Extrae un nombre de archivo seguro del header Content-Disposition.
+ * Solo acepta nombres simples de PDF (sin barras, espacios ni puntos dobles);
+ * cualquier otro valor descarta el header para usar el nombre de respaldo.
+ */
+export function pdfFilenameFromDisposition(header: string | null): string | null {
+  if (!header) return null;
+  const match = /;\s*filename="([^"]*)"/i.exec(header);
+  const name = match?.[1]?.trim() ?? '';
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\.pdf$/i.test(name)) return null;
+  return name;
+}
+
+/**
+ * Traduce la respuesta del endpoint de pasaje a un mensaje para la persona.
+ * Nunca propaga detalles internos: solo el mensaje exacto de no encontrado,
+ * el mensaje ya orientado a la persona del 409 (cancelada) y, en el resto
+ * de los casos, un mensaje generico.
+ */
+export function describePasajeDownloadError(status: number, serverMessage: string | null): string {
+  if (status === 404) return NOT_FOUND_MESSAGE;
+  if (status === 409 && serverMessage) return serverMessage;
+  return PASAJE_DOWNLOAD_FAILED_MESSAGE;
+}
+
+/**
  * Detalle de la reserva encontrada. Solo muestra los datos que devuelve el
  * endpoint. Se exporta para poder renderizarlo en las pruebas de la vista.
+ *
+ * El boton de pasaje reutiliza el mismo par codigo + apellido que autorizo la
+ * consulta (el endpoint vuelve a validarlos); la factura permanece deshabilitada.
  */
 export function ReservaDetalle({ booking }: { booking: PublicBookingView }) {
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  // Cualquier apellido de la reserva autoriza la descarga: el endpoint exige
+  // que el apellido pertenezca a un pasajero de esa misma reserva.
+  const lookupLastName =
+    booking.passengers.find((passenger) => passenger.lastName?.trim())?.lastName?.trim() ?? '';
+
   const status = bookingStatusPresentation(booking.status);
   const cabin = cabinClassLabel(booking.cabinClass || booking.flights[0]?.fare?.cabinClass);
   const passengerCount = booking.passengersCount ?? booking.passengers.length;
+
+  async function onDownloadPasaje() {
+    // Evita descargas multiples mientras una sigue en curso.
+    if (downloading) return;
+    setDownloadError(null);
+    setDownloading(true);
+    let objectUrl: string | null = null;
+    try {
+      const response = await fetch('/api/v1/reservas/consulta/pasaje', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ code: booking.bookingCode, lastName: lookupLastName }),
+      });
+
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as ApiErrorBody | null;
+        setDownloadError(describePasajeDownloadError(response.status, body?.error?.message ?? null));
+        return;
+      }
+
+      const contentType = response.headers.get('content-type') ?? '';
+      if (!contentType.includes('application/pdf')) {
+        setDownloadError(PASAJE_DOWNLOAD_FAILED_MESSAGE);
+        return;
+      }
+
+      const blob = await response.blob();
+      objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download =
+        pdfFilenameFromDisposition(response.headers.get('content-disposition')) ??
+        `pasaje-${booking.bookingCode}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch {
+      // Falla de red: no se exponen detalles internos.
+      setDownloadError(PASAJE_DOWNLOAD_FAILED_MESSAGE);
+    } finally {
+      if (objectUrl !== null) URL.revokeObjectURL(objectUrl);
+      setDownloading(false);
+    }
+  }
 
   return (
     <section
@@ -441,20 +523,27 @@ export function ReservaDetalle({ booking }: { booking: PublicBookingView }) {
       </div>
 
       {/*
-        Acciones de documento: presentes como elementos de interfaz, pero
-        deshabilitadas en esta tarea. No se simula ninguna descarga.
+        Acciones de documento: el pasaje se descarga desde el endpoint publico
+        reutilizando el codigo y apellido de la consulta; la factura sigue
+        deshabilitada en esta tarea. No se simula ninguna descarga.
       */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-outline-variant/60 pt-4">
         <button
           aria-describedby="pdf-pasaje-note"
           className="h-11 px-4 rounded-lg bg-secondary text-on-secondary font-label-lg text-label-lg font-bold flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-          disabled
+          disabled={downloading || lookupLastName === ''}
+          onClick={onDownloadPasaje}
           type="button"
         >
+          {downloading && (
+            <span aria-hidden="true" className="material-symbols-outlined animate-spin text-base">
+              progress_activity
+            </span>
+          )}
           <span aria-hidden="true" className="material-symbols-outlined text-base">
             download
           </span>
-          Descargar Pasaje PDF
+          {downloading ? 'Generando PDF…' : 'Descargar Pasaje PDF'}
         </button>
         <button
           aria-describedby="pdf-factura-note"
@@ -468,8 +557,22 @@ export function ReservaDetalle({ booking }: { booking: PublicBookingView }) {
           Descargar Factura PDF
         </button>
       </div>
+      {/* Región viva de la descarga del pasaje: errores para lectores de pantalla. */}
+      <div aria-live="assertive" role="status">
+        {downloading && (
+          <p className="sr-only">Generando el pasaje en PDF, por favor espere.</p>
+        )}
+        {downloadError && (
+          <p
+            className="mt-2 rounded-lg bg-error-container border border-error/30 text-on-error-container font-body-sm text-body-sm px-4 py-3"
+            role="alert"
+          >
+            {downloadError}
+          </p>
+        )}
+      </div>
       <p className="sr-only" id="pdf-pasaje-note">
-        La descarga del pasaje en PDF todavía no está disponible.
+        La descarga del pasaje en PDF usa el código y apellido de la consulta.
       </p>
       <p className="sr-only" id="pdf-factura-note">
         La descarga de la factura en PDF todavía no está disponible.

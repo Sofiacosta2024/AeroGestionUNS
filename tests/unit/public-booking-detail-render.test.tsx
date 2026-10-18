@@ -1,7 +1,12 @@
+import { createElement } from 'react';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { ReservaDetalle } from '../../src/app/reserva/consulta-client';
+import {
+  ReservaDetalle,
+  describePasajeDownloadError,
+  pdfFilenameFromDisposition,
+} from '../../src/app/reserva/consulta-client';
 import type { PublicBookingView } from '../../src/lib/public-booking-view';
 
 /**
@@ -9,7 +14,10 @@ import type { PublicBookingView } from '../../src/lib/public-booking-view';
  * marcado HTML estatico y verifican que:
  * - muestra unicamente los datos reales que le pasa el backend,
  * - tolera campos opcionales ausentes sin romper,
- * - incluye los botones de descarga como elementos de interfaz (sin simular).
+ * - habilita la descarga del pasaje (sin simular el fetch) y mantiene
+ *   deshabilitada la de factura,
+ * - los helpers de la descarga (nombre de archivo y mensajes de error)
+ *   son seguros y no filtran detalles internos.
  */
 
 function sampleBooking(overrides: Partial<PublicBookingView> = {}): PublicBookingView {
@@ -57,7 +65,8 @@ function sampleBooking(overrides: Partial<PublicBookingView> = {}): PublicBookin
   };
 }
 
-const render = (booking: PublicBookingView) => renderToStaticMarkup(ReservaDetalle({ booking }));
+const render = (booking: PublicBookingView) =>
+  renderToStaticMarkup(createElement(ReservaDetalle, { booking }));
 
 test('detalle: muestra codigo, estado, vuelo, ruta y horarios reales', () => {
   const html = render(sampleBooking());
@@ -86,12 +95,31 @@ test('detalle: no filtra datos internos que el backend no envia', () => {
   assert.doesNotMatch(html, /\b\d{8}\b/);
 });
 
-test('detalle: botones de descarga presentes pero no simulan descargas', () => {
+test('detalle: pasaje habilitado para descargar; factura deshabilitada', () => {
   const html = render(sampleBooking());
   assert.match(html, /Descargar Pasaje PDF/);
   assert.match(html, /Descargar Factura PDF/);
-  const disabled = html.match(/disabled=""/g) ?? [];
-  assert.equal(disabled.length, 2, 'los dos botones de descarga deben estar deshabilitados');
+  // Cada boton en su propio segmento: className trae utilidades "disabled:".
+  const buttonFor = (label: string) =>
+    html
+      .split('<button')
+      .find((segment) => segment.includes(label))
+      ?.split('>')[0] ?? '';
+  assert.doesNotMatch(buttonFor('Descargar Pasaje PDF'), /\sdisabled=""/, 'el boton de pasaje debe estar habilitado');
+  assert.match(buttonFor('Descargar Factura PDF'), /\sdisabled=""/, 'el boton de factura debe seguir deshabilitado');
+});
+
+test('detalle: sin apellido utilizable el pasaje queda deshabilitado', () => {
+  const html = render(
+    sampleBooking({
+      passengers: [
+        { firstName: 'Sin', lastName: '', documentType: null, documentNumber: null, seatNumber: null, checkInStatus: null },
+      ],
+    }),
+  );
+  const pasajeTag =
+    html.split('<button').find((segment) => segment.includes('Descargar Pasaje PDF'))?.split('>')[0] ?? '';
+  assert.match(pasajeTag, /\sdisabled=""/);
 });
 
 test('detalle: campos opcionales ausentes no rompen la vista', () => {
@@ -155,4 +183,67 @@ test('detalle: reserva de ida y vuelta con varios vuelos', () => {
   assert.match(html, /AG-1421/);
   assert.match(html, /Regreso/);
   assert.match(html, /AEP → BHI/);
+});
+
+// ---------------------------------------------------------------------------
+// Helpers de la descarga del pasaje (nombre de archivo y mensajes)
+// ---------------------------------------------------------------------------
+
+test('pdfFilenameFromDisposition: acepta el nombre simple del endpoint', () => {
+  assert.equal(
+    pdfFilenameFromDisposition('attachment; filename="pasaje-AG-7F3K9Q.pdf"'),
+    'pasaje-AG-7F3K9Q.pdf',
+  );
+});
+
+test('pdfFilenameFromDisposition: rechaza headers ausentes o inseguros', () => {
+  assert.equal(pdfFilenameFromDisposition(null), null);
+  assert.equal(pdfFilenameFromDisposition(''), null);
+  assert.equal(pdfFilenameFromDisposition('attachment'), null);
+  assert.equal(pdfFilenameFromDisposition('attachment; filename=""'), null);
+  // Rutas o separadores: nunca se usan como nombre de archivo local.
+  assert.equal(pdfFilenameFromDisposition('attachment; filename="../../etc/passwd.pdf"'), null);
+  assert.equal(pdfFilenameFromDisposition('attachment; filename="C:\\Windows\\x.pdf"'), null);
+  assert.equal(pdfFilenameFromDisposition('attachment; filename="a/b.pdf"'), null);
+  // Extension no PDF o caracteres raros.
+  assert.equal(pdfFilenameFromDisposition('attachment; filename="pasaje.exe"'), null);
+  assert.equal(pdfFilenameFromDisposition('attachment; filename="pasaje.pdf.txt"'), null);
+  assert.equal(pdfFilenameFromDisposition('attachment; filename="pa saje.pdf"'), null);
+  assert.equal(pdfFilenameFromDisposition('attachment; filename=".pdf"'), null);
+  // filename* (RFC 5987) no se interpreta: se usa el nombre de respaldo.
+  assert.equal(pdfFilenameFromDisposition("attachment; filename*=UTF-8''x.pdf"), null);
+});
+
+test('describePasajeDownloadError: 404 usa el mensaje exacto de no encontrado', () => {
+  const message = describePasajeDownloadError(404, null);
+  assert.equal(
+    message,
+    'No encontramos ninguna reserva que coincida con el código y apellido ingresados. Por favor verifique sus datos.',
+  );
+});
+
+test('describePasajeDownloadError: 409 (cancelada) usa el mensaje del servidor', () => {
+  assert.equal(
+    describePasajeDownloadError(409, 'El pasaje no está disponible para reservas canceladas'),
+    'El pasaje no está disponible para reservas canceladas',
+  );
+  // Sin mensaje del servidor cae al generico.
+  assert.equal(
+    describePasajeDownloadError(409, null),
+    'No pudimos generar el pasaje en PDF. Intente nuevamente en unos instantes.',
+  );
+});
+
+test('describePasajeDownloadError: demas fallos son genericos, sin filtrar internals', () => {
+  const generic = 'No pudimos generar el pasaje en PDF. Intente nuevamente en unos instantes.';
+  for (const status of [400, 422, 500]) {
+    assert.equal(describePasajeDownloadError(status, null), generic);
+    // Aunque el servidor mande un mensaje, no se propaga en estados no esperados.
+    assert.equal(describePasajeDownloadError(status, 'detalle interno del servidor'), generic);
+  }
+  // Ningun mensaje resultante contiene texto tipo stack trace o SQL.
+  for (const status of [400, 404, 409, 422, 500]) {
+    const message = describePasajeDownloadError(status, status === 409 ? 'El pasaje no está disponible para reservas canceladas' : 'Error: SELECT * FROM bookings');
+    assert.doesNotMatch(message, /SELECT|Error:|at \w+\./);
+  }
 });
