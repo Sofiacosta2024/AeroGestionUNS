@@ -96,8 +96,8 @@ test('genera un pasaje por pasajero con documento, asiento y vuelo', () => {
   assert.equal(first.documentNumber, '30111222');
   assert.equal(first.seat, '12A');
   assert.equal(first.flightCode, 'AG-1420');
-  assert.equal(first.origin, 'BHI · Bahía Blanca');
-  assert.equal(first.destination, 'AEP · Buenos Aires');
+  assert.deepEqual(first.origin, { code: 'BHI', city: 'Bahía Blanca' });
+  assert.deepEqual(first.destination, { code: 'AEP', city: 'Buenos Aires' });
   assert.equal(first.departureAt, '2026-11-18T09:30:00.000Z');
 });
 

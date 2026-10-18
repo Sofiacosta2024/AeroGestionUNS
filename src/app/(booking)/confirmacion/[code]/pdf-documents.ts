@@ -61,6 +61,58 @@ function drawDisclaimer(doc: jsPDF, y: number): void {
   );
 }
 
+/** Flecha horizontal dibujada con vectores: el glifo `→` no existe en las fuentes de jsPDF. */
+function drawArrow(doc: jsPDF, x1: number, x2: number, y: number): void {
+  doc.setDrawColor(...ACCENT);
+  doc.setLineWidth(0.6);
+  doc.line(x1, y, x2, y);
+  const head = 2.4;
+  doc.line(x2, y, x2 - head, y - head * 0.65);
+  doc.line(x2, y, x2 - head, y + head * 0.65);
+}
+
+/**
+ * Ruta estilo pase de abordar: código IATA grande a cada lado, ciudad con wrap debajo
+ * y una flecha vectorial al medio. Devuelve la Y siguiente.
+ */
+function drawRoute(doc: jsPDF, pass: TravelPass, y: number): number {
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(...MUTED);
+  doc.text('RUTA', MARGIN, y);
+
+  const codeY = y + 8;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(...BRAND);
+  doc.text(pass.origin.code, MARGIN, codeY);
+  doc.text(pass.destination.code, RIGHT, codeY, { align: 'right' });
+
+  // La flecha se extiende entre ambos códigos para que la ruta quede conectada.
+  const gap = 7;
+  const arrowStart = MARGIN + doc.getTextWidth(pass.origin.code) + gap;
+  const arrowEnd = RIGHT - doc.getTextWidth(pass.destination.code) - gap;
+
+  // Ciudades en gris, con wrap para que nombres largos nunca se salgan de la página.
+  const cityWidth = 60;
+  const originCity = doc.splitTextToSize(pass.origin.city, cityWidth) as string[];
+  const destCity = doc.splitTextToSize(pass.destination.city, cityWidth) as string[];
+  const cityY = codeY + 6;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(...MUTED);
+  originCity.forEach((line, i) => doc.text(line, MARGIN, cityY + i * 4));
+  destCity.forEach((line, i) =>
+    doc.text(line, RIGHT, cityY + i * 4, { align: 'right' }),
+  );
+
+  // Flecha al medio, a la altura de los códigos IATA.
+  drawArrow(doc, arrowStart, arrowEnd, codeY - 2);
+
+  const lines = Math.max(originCity.length, destCity.length);
+  return cityY + (lines - 1) * 4 + 4;
+}
+
 function drawPass(doc: jsPDF, pass: TravelPass): void {
   let y = drawHeader(doc, 'PASAJE · DEMO');
 
@@ -82,7 +134,7 @@ function drawPass(doc: jsPDF, pass: TravelPass): void {
     y,
   );
   y = drawField(doc, 'Vuelo', pass.flightCode, y);
-  y = drawField(doc, 'Ruta', `${pass.origin}  →  ${pass.destination}`, y);
+  y = drawRoute(doc, pass, y);
   y = drawField(
     doc,
     'Fecha y hora',

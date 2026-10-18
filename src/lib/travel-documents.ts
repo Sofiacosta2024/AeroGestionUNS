@@ -23,6 +23,8 @@ const CABIN_LABELS: Record<string, string> = {
   FIRST: 'Primera Clase',
 };
 
+export type AirportRef = { code: string; city: string };
+
 export type TravelPass = {
   bookingCode: string;
   passengerName: string;
@@ -31,8 +33,8 @@ export type TravelPass = {
   seat: string;
   cabinClass: string;
   flightCode: string;
-  origin: string;
-  destination: string;
+  origin: AirportRef;
+  destination: AirportRef;
   departureAt: string;
   arrivalAt: string;
 };
@@ -72,8 +74,14 @@ export function toTravelDocuments(booking: BookingWithRelations): TravelDocument
       seat: p.seat ? `${p.seat.rowNumber}${p.seat.columnLetter}` : 'Sin asignar',
       cabinClass: cabinLabel(p.seat?.cabinClass ?? booking.cabinClass),
       flightCode: flight.code,
-      origin: `${flight.route.originAirport.iataCode} · ${flight.route.originAirport.city}`,
-      destination: `${flight.route.destinationAirport.iataCode} · ${flight.route.destinationAirport.city}`,
+      origin: {
+        code: flight.route.originAirport.iataCode,
+        city: flight.route.originAirport.city,
+      },
+      destination: {
+        code: flight.route.destinationAirport.iataCode,
+        city: flight.route.destinationAirport.city,
+      },
       departureAt: flight.departureAt.toISOString(),
       arrivalAt: flight.arrivalAt.toISOString(),
     })),
