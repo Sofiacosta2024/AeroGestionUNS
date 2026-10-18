@@ -19,7 +19,7 @@ export class ApiRequestError extends Error {
 }
 
 export async function apiRequest<T>(
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   url: string,
   body?: unknown,
   signal?: AbortSignal,

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import type { FormRoute, ScheduleFormData } from '@/lib/scheduling/form-data';
 import type { SerializedSchedule } from '@/lib/scheduling/serializers';
+import type { ScheduleEvaluation } from '@/lib/scheduling/service';
 import { apiRequest, errorDetails } from '../../api-client';
 import CheckPanel from './check-panel';
 import ClassOffersSection from './class-offers-section';
@@ -19,7 +20,7 @@ import {
 } from './form-model';
 import RouteSummary from './route-summary';
 import ScheduleSection from './schedule-section';
-import { useScheduleCheck } from './use-schedule-check';
+import { useLiveCheck } from '../../use-live-check';
 
 type Props = {
   data: ScheduleFormData;
@@ -51,7 +52,7 @@ export default function FlightScheduleForm({ data, draft }: Props) {
   const aircraft = data.aircraft.find((a) => a.id === form.aircraftId) ?? null;
   const input = useMemo(() => toScheduleInput(form, route), [form, route]);
   const plannedDates = useMemo(() => plannedFlightDates(form), [form]);
-  const check = useScheduleCheck(input);
+  const check = useLiveCheck<ScheduleEvaluation>('/api/flight-schedules/check', input);
   const canSubmit = input !== null && check.result?.canSave === true && !check.loading;
 
   const update = (patch: Partial<FormState>) => {

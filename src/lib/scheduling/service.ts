@@ -59,8 +59,9 @@ function planFlights(input: ScheduleInput, durationMinutes: number): PlannedFlig
 /**
  * Solo se programa desde hoy hasta hoy + 1 año, inclusive (BUG-01 de la demo 1). Se corta
  * antes de expandir el calendario: un rango absurdo (ej. año 9999) generaria millones de fechas.
+ * Tambien la usa la reprogramacion (US-11B) con desde = hasta = la nueva fecha.
  */
-function assertSchedulableRange(input: ScheduleInput, now: Date): void {
+export function assertSchedulableRange(input: Pick<ScheduleInput, 'validFrom' | 'validTo'>, now: Date): void {
   const today = toDateInput(now);
   const last = lastSchedulableDate(today);
   const issues: OfferIssue[] = [];
@@ -97,26 +98,35 @@ function contextIssues(ctx: ScheduleContext, planned: readonly PlannedFlight[], 
   return issues;
 }
 
-async function findConflicts(
+/** Choques con vuelos ya programados. `exceptFlightId`: el vuelo que se reprograma (US-11B). */
+export async function findConflicts(
   db: Db,
   ctx: ScheduleContext,
   planned: readonly PlannedFlight[],
   rules: SchedulingRules,
+  exceptFlightId?: string,
 ): Promise<ScheduleConflict[]> {
   const first = planned[0];
   const last = planned[planned.length - 1];
   if (!first || !last) return [];
 
   const [sameOrigin, sameAircraft] = await Promise.all([
-    repo.findDeparturesFrom(db, ctx.route.originAirportId, {
-      from: addMinutes(first.departureAt, -rules.gapMinutes),
-      to: addMinutes(last.departureAt, rules.gapMinutes),
-    }),
+    repo.findDeparturesFrom(
+      db,
+      ctx.route.originAirportId,
+      { from: addMinutes(first.departureAt, -rules.gapMinutes), to: addMinutes(last.departureAt, rules.gapMinutes) },
+      exceptFlightId,
+    ),
     // Ventana ampliada con la rotacion: trae tambien el vuelo anterior y el siguiente.
-    repo.findAircraftFlights(db, ctx.aircraft.id, {
-      from: addMinutes(first.departureAt, -rules.turnaroundMinutes),
-      to: addMinutes(last.arrivalAt, rules.turnaroundMinutes),
-    }),
+    repo.findAircraftFlights(
+      db,
+      ctx.aircraft.id,
+      {
+        from: addMinutes(first.departureAt, -rules.turnaroundMinutes),
+        to: addMinutes(last.arrivalAt, rules.turnaroundMinutes),
+      },
+      exceptFlightId,
+    ),
   ]);
 
   return [

@@ -96,6 +96,9 @@ function FlightsTable({ flights }: { flights: ItineraryFlightView[] }) {
             <th className="p-space-sm">Avión</th>
             <th className="p-space-sm">Clases (disponibles / ofrecidos · precio)</th>
             <th className="p-space-sm">Estado</th>
+            <th className="p-space-sm">
+              <span className="sr-only">Acciones</span>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -124,6 +127,18 @@ function FlightsTable({ flights }: { flights: ItineraryFlightView[] }) {
                 <span className="px-space-sm py-0.5 rounded-full bg-surface-container text-primary font-label-sm text-label-sm uppercase">
                   {STATUS_LABEL[f.status]}
                 </span>
+              </td>
+              <td className="p-space-sm">
+                {/* US-11B: solo vuelos programados o demorados que todavia no salieron. */}
+                {f.reschedulable && (
+                  <Link
+                    className="inline-flex items-center gap-1 font-label-md text-label-md text-secondary font-bold hover:underline whitespace-nowrap"
+                    href={`/admin/vuelos/${f.id}/reprogramar`}
+                  >
+                    <span className="material-symbols-outlined text-[18px]">edit_calendar</span>
+                    Reprogramar
+                  </Link>
+                )}
               </td>
             </tr>
           ))}

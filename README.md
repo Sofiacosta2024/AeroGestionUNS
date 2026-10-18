@@ -37,6 +37,7 @@ La aplicación queda en `http://localhost:3000`:
 - `/vuelos` — motor de búsqueda de vuelos (diseño de `vuelos.html`).
 - `/admin/vuelos/nuevo` — alta y publicación de vuelos (RF-01, solo `ADMIN`).
 - `/admin/itinerario` — planilla del día y borradores pendientes (RF-01, solo `ADMIN`).
+- `/admin/vuelos/:id/reprogramar` — reprogramar fecha, hora, ruta o avión de un vuelo (US-11B, solo `ADMIN`).
 - `/` — redirige a `/vuelos` si hay sesión, a `/login` si no.
 
 ### Variables de entorno
@@ -117,7 +118,7 @@ src/
     flights.ts           include/serialización de vuelos
     format.ts            importes, horarios y fechas (ART)
     prisma.ts            cliente Prisma singleton
-    scheduling/          programación de vuelos (RF-01): reglas, repositorio y servicio
+    scheduling/          programación (RF-01) y reprogramación (US-11B) de vuelos: reglas, repositorio y servicios
     validation.ts        schemas Zod
     view-models.ts       formas de datos que cruzan a React
   tailwind (config.ts)   tokens compilados + variables por página

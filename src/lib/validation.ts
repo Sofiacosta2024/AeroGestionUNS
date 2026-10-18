@@ -181,8 +181,13 @@ const flightBase = z.object({
 // Cambio RF-01: el alta (`POST /api/flights`) ya no usa este schema sino
 // `singleFlightSchema` (codigo y llegada los calcula el sistema). `flightBase` queda
 // para la edicion de un vuelo existente.
+// Cambio US-11B: la edicion tampoco acepta `code` ni `arrivalAt` (los fija el sistema) y
+// rechaza campos desconocidos para que no se ignoren en silencio. Ruta, avion y salida
+// pasan por las reglas de reprogramacion (scheduling/reschedule.ts).
 export const flightUpdateSchema = flightBase
+  .omit({ code: true, arrivalAt: true })
   .partial()
+  .strict()
   .refine((d) => Object.keys(d).length > 0, { message: 'No hay campos para actualizar' });
 
 export const flightStatusUpdateSchema = z.object({
@@ -265,6 +270,16 @@ export const singleFlightSchema = z.object({
 });
 
 export type SingleFlightInput = z.output<typeof singleFlightSchema>;
+
+/** Reprogramacion de un vuelo publicado (US-11B). La llegada la calcula el sistema. */
+export const flightRescheduleSchema = z.object({
+  routeId: z.string().cuid('Ruta invalida'),
+  aircraftId: z.string().cuid('Avion invalido'),
+  date: calendarDate,
+  departureTime: timeOfDay,
+});
+
+export type RescheduleInput = z.output<typeof flightRescheduleSchema>;
 
 export const scheduleListQuery = paginationQuery.extend({
   status: z.enum(['DRAFT', 'PUBLISHED']).optional(),

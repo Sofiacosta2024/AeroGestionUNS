@@ -32,11 +32,11 @@ const WEEK = [
   { value: 0, label: 'DOM', letter: 'D' },
 ];
 
-const INPUT =
+export const INPUT =
   'w-full bg-white px-3.5 py-2.5 rounded-xl font-medium text-slate-800 border border-slate-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E11D48]/20 focus:border-[#E11D48] transition-all text-sm';
-const SELECT =
+export const SELECT =
   'w-full bg-white px-3.5 py-3 rounded-xl font-bold text-slate-800 border border-slate-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E11D48]/20 focus:border-[#E11D48] transition-all text-sm cursor-pointer';
-const SMALL_LABEL = 'font-label-sm text-[11px] font-bold uppercase tracking-wider text-slate-500';
+export const SMALL_LABEL = 'font-label-sm text-[11px] font-bold uppercase tracking-wider text-slate-500';
 
 /** Card 1 del diseno: ruta, avion, fechas, hora y dias de operacion. */
 export default function ScheduleSection(props: Props) {

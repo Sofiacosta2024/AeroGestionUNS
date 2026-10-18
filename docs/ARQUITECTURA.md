@@ -113,18 +113,22 @@ sesión, así que conocerlo no puede dar acceso a datos nominales:
 `src/lib/scheduling/` separa las reglas del acceso a datos:
 
 - **Reglas puras** (no tocan la base ni el reloj): `calendar.ts` (fechas de operación y
-  hora ART → UTC), `conflicts.ts` (salidas pasadas, margen entre salidas del mismo
-  aeropuerto, rotación mínima del avión) y `capacity.ts` (asientos y precio por clase, con tope por
-  cabina).
+  hora ART → UTC), `conflicts.ts` (margen entre salidas del mismo aeropuerto, rotación
+  mínima del avión) y `capacity.ts` (asientos y precio por clase, con tope por cabina, y el
+  ajuste proporcional al cambiar de avión).
 - **`repository.ts`**: las consultas y escrituras con Prisma. Recibe el cliente o la
   transacción para que el servicio decida el alcance transaccional.
 - **`service.ts`**: los casos de uso (chequear, guardar borrador, editar, publicar,
   descartar, alta puntual). Toda escritura vuelve a validar dentro de la transacción.
+- **`reschedule.ts`**: la reprogramación de un vuelo publicado (US-11B). Reusa las reglas
+  y la detección de choques de `service.ts`, sin contar al propio vuelo.
 - **`itinerary.ts`**: la planilla del día (consulta de solo lectura).
 
-Los Route Handlers de `/api/flight-schedules` y `/api/itinerary` solo validan la
-entrada, exigen el rol y llaman al servicio. `POST /api/flights` usa el mismo servicio, así
-las reglas no están duplicadas.
+Los Route Handlers de `/api/flight-schedules`, `/api/admin/flights/:id/itinerary` y
+`/api/itinerary` solo validan la entrada, exigen el rol y llaman al servicio. `POST
+/api/flights` y `PATCH /api/flights/:id` usan los mismos servicios, así las reglas no están
+duplicadas. La reprogramación toma el mismo lock que la publicación y además bloquea las filas
+del vuelo, así una compra simultánea (RF-03) espera a que termine.
 
 La publicación toma un lock de transacción de Postgres (`pg_advisory_xact_lock`): dos
 publicaciones simultáneas no pueden validar la misma franja a la vez. Es compatible con el

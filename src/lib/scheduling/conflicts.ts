@@ -34,7 +34,20 @@ export type ScheduleConflict = {
   date: string;
   /** Vuelo existente con el que choca. */
   conflictingFlightCode: string;
+  /** Horario del vuelo con el que choca (para el mensaje de la US-11B). */
+  conflictingDepartureAt: Date;
+  conflictingArrivalAt: Date;
 };
+
+function conflictWith(kind: ConflictKind, p: PlannedFlight, f: ScheduledFlight): ScheduleConflict {
+  return {
+    kind,
+    date: p.date,
+    conflictingFlightCode: f.code,
+    conflictingDepartureAt: f.departureAt,
+    conflictingArrivalAt: f.arrivalAt,
+  };
+}
 
 const MINUTE_MS = 60_000;
 
@@ -51,7 +64,7 @@ export function findDepartureGapConflicts(
   return planned.flatMap((p) =>
     sameOriginFlights
       .filter((f) => Math.abs(f.departureAt.getTime() - p.departureAt.getTime()) < gapMs)
-      .map((f) => ({ kind: 'DEPARTURE_GAP' as const, date: p.date, conflictingFlightCode: f.code })),
+      .map((f) => conflictWith('DEPARTURE_GAP', p, f)),
   );
 }
 
@@ -75,7 +88,7 @@ export function findAircraftOverlaps(
           p.departureAt.getTime() < f.arrivalAt.getTime() + turnaroundMs &&
           f.departureAt.getTime() < p.arrivalAt.getTime() + turnaroundMs,
       )
-      .map((f) => ({ kind: 'AIRCRAFT_BUSY' as const, date: p.date, conflictingFlightCode: f.code })),
+      .map((f) => conflictWith('AIRCRAFT_BUSY', p, f)),
   );
 }
 

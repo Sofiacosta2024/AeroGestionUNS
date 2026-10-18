@@ -105,7 +105,7 @@ columna `date`.
 | --- | --- | --- | --- |
 | `GET` | `/api/flights` | público | Buscador (alimenta `/vuelos`). |
 | `POST` | `/api/flights` | `MOSTRADOR` | Alta de un vuelo puntual con las reglas de RF-01 (ver abajo). |
-| `GET` `PATCH` `DELETE` | `/api/flights/:id` | público / `MOSTRADOR` / `ADMIN` | Detalle, edición, baja. |
+| `GET` `PATCH` `DELETE` | `/api/flights/:id` | público / `MOSTRADOR` / `ADMIN` | Detalle, edición, baja. *Cambio US-11B:* `PATCH` ya no acepta `code` ni `arrivalAt`, rechaza campos desconocidos y, si cambian `routeId`, `aircraftId` o `departureAt`, aplica las reglas de [reprogramación](#reprogramación-de-vuelos-us-11b). |
 | `GET` `POST` `DELETE` | `/api/flights/:id/fares` | público / `MOSTRADOR` / `MOSTRADOR` | Precios del vuelo, alta, quitar. |
 | `PATCH` | `/api/flights/:id/status` | `MOSTRADOR` | Cambio de estado operativo. |
 
@@ -240,6 +240,67 @@ inválidos (clases faltantes, asientos de más, fechas fuera de rango) responden
   "canSave": true
 }
 ```
+
+## Reprogramación de vuelos (US-11B)
+
+Cambia la fecha, la hora de salida, la ruta o el avión de **un** vuelo publicado. La
+llegada se recalcula con la duración de la ruta. Pantalla: `/admin/vuelos/:id/reprogramar`,
+desde la acción «Reprogramar» de la planilla del día.
+
+| Método | Ruta | Rol | Descripción |
+| --- | --- | --- | --- |
+| `POST` | `/api/admin/flights/:id/itinerary/check` | `ADMIN` | Chequeo en vivo. No guarda nada. |
+| `PATCH` | `/api/admin/flights/:id/itinerary` | `ADMIN` | Guarda la reprogramación. |
+
+Los dos reciben el itinerario completo:
+
+```json
+{ "routeId": "...", "aircraftId": "...", "date": "2026-10-21", "departureTime": "10:00" }
+```
+
+Reglas:
+
+- Solo vuelos `SCHEDULED` o `DELAYED` que todavía no salieron (si no, `409`).
+- Las mismas del alta, sin contar al propio vuelo: no al pasado, no más allá de hoy + 1
+  año, margen entre salidas del mismo aeropuerto y rotación del avión.
+- La ruta solo cambia si el vuelo no tiene reservas activas (pagadas, confirmadas o
+  pendientes con el bloqueo vigente).
+- El avión solo cambia si no hay asientos asignados ni bloqueados. Si lo ofrecido en una
+  cabina no entra en el avión nuevo, cada clase de esa cabina se reduce en la misma
+  proporción sin bajar de lo vendido (ej. 100 Economy + 44 Economy Premium en 144 → 75 + 33
+  en 108). Si lo vendido no entra, responde `422`.
+
+Respuestas de error:
+
+- Avión ocupado: `409` con «La aeronave seleccionada ya tiene un vuelo asignado entre las
+  HH:MM y las HH:MM hs.» (horario del otro vuelo).
+- Salida a menos del margen de otra del mismo aeropuerto: `409` con «Ya existe un vuelo o
+  cronograma que se superpone con el ingresado».
+- Ruta o avión que no se pueden cambiar: `422` con el motivo en `details`.
+- Sin cambios: `400`.
+
+`check` responde, sin guardar:
+
+```json
+{
+  "changed": true,
+  "departureAt": "2026-10-21T13:00:00.000Z",
+  "arrivalAt": "2026-10-21T14:10:00.000Z",
+  "arrivalTime": "11:10",
+  "arrivalDate": "2026-10-21",
+  "durationMinutes": 70,
+  "affectedPassengers": 2,
+  "classes": [ { "fareId": "...", "name": "Economy", "sold": 2, "capacity": 111, "newCapacity": 111 } ],
+  "conflicts": [],
+  "issues": [],
+  "canSave": true
+}
+```
+
+Al guardar también se actualiza la salida copiada en `booking_flights.departure_at` y queda
+en `audit_logs` (`action = RESCHEDULE`) el itinerario anterior y el nuevo, los pasajeros
+afectados y las clases cuya capacidad se ajustó. La respuesta trae lo mismo. El aviso por
+mail a los pasajeros es de RF-06.
 
 ## Pasajeros y reservas
 

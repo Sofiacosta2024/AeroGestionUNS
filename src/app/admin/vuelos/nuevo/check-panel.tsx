@@ -1,8 +1,9 @@
 import { OVERLAP_MESSAGE } from '@/lib/scheduling/conflicts';
-import type { CheckState } from './use-schedule-check';
+import type { ScheduleEvaluation } from '@/lib/scheduling/service';
+import type { CheckState } from '../../use-live-check';
 
 type Props = {
-  check: CheckState;
+  check: CheckState<ScheduleEvaluation>;
   /** Si ya hay datos suficientes para consultar al servidor. */
   ready: boolean;
 };
@@ -76,7 +77,7 @@ const ICON_COLORS = {
   error: 'text-[#E11D48]',
 } as const;
 
-function Panel(props: { tone: keyof typeof TONES; icon: string; title?: string; children: React.ReactNode }) {
+export function Panel(props: { tone: keyof typeof TONES; icon: string; title?: string; children: React.ReactNode }) {
   return (
     <div className={`flex items-start gap-space-sm p-4 rounded-2xl shadow-sm ${TONES[props.tone]}`} role="status">
       <span className={`material-symbols-outlined text-[22px] shrink-0 mt-0.5 ${ICON_COLORS[props.tone]}`}>{props.icon}</span>
@@ -88,7 +89,7 @@ function Panel(props: { tone: keyof typeof TONES; icon: string; title?: string; 
   );
 }
 
-function MessageList({ messages }: { messages: string[] }) {
+export function MessageList({ messages }: { messages: string[] }) {
   return (
     <ul className="list-disc pl-5 flex flex-col gap-0.5 font-body-sm text-body-sm">
       {messages.map((m) => (
