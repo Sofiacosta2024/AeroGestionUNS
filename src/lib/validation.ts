@@ -392,9 +392,14 @@ export function normalizeBookingCode(value: string): string {
   return `${BOOKING_CODE_PREFIX}${suffix}`;
 }
 
-/** Normaliza un apellido: recorta espacios exteriores (conserva el resto). */
+/**
+ * Normaliza un apellido: recorta espacios exteriores y compone los diacriticos
+ * a la forma NFC. El NFC evita que un apellido pegado en descomposicion (NFD,
+ * comun desde macOS) se rechace o no matchee por diferencias de bytes entre la
+ * tilde suelta y la letra precompuesta.
+ */
 export function normalizeLastName(value: string): string {
-  return value.trim();
+  return value.trim().normalize('NFC');
 }
 
 /**

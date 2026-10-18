@@ -6,11 +6,22 @@ const isPublic = createRouteMatcher([
   '/sign-up(.*)',
   '/reserva(.*)',
   '/api/reservas/consulta',
-  '/api/v1/reservas/consulta(.*)',
+  // La consulta publica y sus dos documentos: solo esas tres rutas. Rutas
+  // explicitas (fail-closed): cualquier subpath nuevo exige decidir si es
+  // publico; un wildcard haria publico de facto todo lo que empiece por el
+  // prefijo (ej. /consulta-admin).
+  '/api/v1/reservas/consulta',
+  '/api/v1/reservas/consulta/pasaje',
+  '/api/v1/reservas/consulta/factura',
   '/api/webhooks(.*)',
 ]);
 const isAdmin = createRouteMatcher(['/admin(.*)', '/api/admin(.*)']);
 const isMostrador = createRouteMatcher(['/mostrador(.*)', '/api/mostrador(.*)']);
+
+// Exportados solo para las pruebas de rutas (US-14A): permiten verificar que
+// las rutas publicas y protegidas se comportan como se espera sin arrancar
+// el servidor ni Clerk.
+export { isPublic, isAdmin, isMostrador };
 
 
 export default clerkMiddleware(async (auth, req) => {

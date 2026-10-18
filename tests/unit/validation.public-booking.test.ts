@@ -56,6 +56,17 @@ test('normalizeLastName: recorta espacios exteriores', () => {
   assert.equal(normalizeLastName('  Garcia  '), 'Garcia');
 });
 
+test('normalizeLastName: compone diacriticos NFD a NFC (apellido pegado desde macOS)', () => {
+  const nfd = 'García'.normalize('NFD');
+  assert.notEqual(nfd, 'García', 'el fixture debe estar en descomposicion');
+  assert.equal(normalizeLastName(nfd), 'García');
+});
+
+test('valido: apellido en descomposicion NFD se compone y valida', () => {
+  const data = expectValid({ code: 'ag-7f3k9q', lastName: 'García'.normalize('NFD') });
+  assert.equal(data.lastName, 'García');
+});
+
 // ---------------------------------------------------------------------------
 // Casos validos
 // ---------------------------------------------------------------------------
