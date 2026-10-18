@@ -26,9 +26,11 @@ export function shiftDate(date: string, days: number): string {
   return new Date(calendarDay(date).getTime() + days * DAY_MS).toISOString().slice(0, 10);
 }
 
-/** Cantidad de dias entre `from` y `to`, ambos inclusive. */
-export function daysInclusive(from: string, to: string): number {
-  return Math.round((calendarDay(to).getTime() - calendarDay(from).getTime()) / DAY_MS) + 1;
+/** `yyyy-mm-dd` + `years` años. El 29/02 cae en el ultimo dia de febrero si el año no es bisiesto. */
+export function addYears(date: string, years: number): string {
+  const [y, m, d] = date.split('-').map(Number);
+  const lastDayOfMonth = new Date(Date.UTC(y! + years, m!, 0)).getUTCDate();
+  return new Date(Date.UTC(y! + years, m! - 1, Math.min(d!, lastDayOfMonth))).toISOString().slice(0, 10);
 }
 
 /** Fechas (`yyyy-mm-dd`) entre `from` y `to` inclusive que caen en alguno de `weekdays`. */

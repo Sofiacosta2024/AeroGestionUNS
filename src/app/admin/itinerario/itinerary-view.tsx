@@ -8,7 +8,7 @@ import { formatArs, formatFullDate, formatWeekday } from '@/lib/format';
 import { shiftDate } from '@/lib/scheduling/calendar';
 import type { ItineraryFlightView } from '@/lib/scheduling/itinerary';
 import type { SerializedSchedule } from '@/lib/scheduling/serializers';
-import { ApiRequestError, apiRequest, detailMessages } from '../api-client';
+import { apiRequest, errorDetails } from '../api-client';
 
 type Props = {
   date: string;
@@ -146,7 +146,7 @@ function DraftsSection({ drafts, onChanged }: { drafts: SerializedSchedule[]; on
     } catch (err) {
       setError({
         message: err instanceof Error ? err.message : 'No se pudo completar la acción',
-        details: err instanceof ApiRequestError ? detailMessages(err.details) : [],
+        details: errorDetails(err),
       });
     } finally {
       setBusyId(null);

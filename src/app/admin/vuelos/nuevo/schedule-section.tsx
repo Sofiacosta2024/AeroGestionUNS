@@ -1,7 +1,7 @@
 'use client';
 
 import { formatDuration } from '@/lib/format';
-import type { SchedulingRules } from '@/lib/scheduling/config';
+import { lastSchedulableDate, type SchedulingRules } from '@/lib/scheduling/config';
 import type { FormAircraft, FormAirport, FormRoute } from '@/lib/scheduling/form-data';
 import { ALL_DAYS, WEEKEND, WORKDAYS, type FormState, type ScheduleMode } from './form-model';
 import NewRouteForm from './new-route-form';
@@ -40,6 +40,7 @@ const SMALL_LABEL = 'font-label-sm text-[11px] font-bold uppercase tracking-wide
 /** Card 1 del diseno: ruta, avion, fechas, hora y dias de operacion. */
 export default function ScheduleSection(props: Props) {
   const { form, airports, aircraft, route, rules, today, plannedCount, arrival, onChange, onRouteCreated } = props;
+  const maxDate = lastSchedulableDate(today);
   const needsRoute = form.origin && form.destination && form.origin !== form.destination && !route;
 
   function toggleDay(day: number) {
@@ -140,17 +141,17 @@ export default function ScheduleSection(props: Props) {
         {form.mode === 'single' ? (
           <label className="flex flex-col gap-space-xs">
             <span className={SMALL_LABEL}>Fecha del vuelo</span>
-            <input className={INPUT} min={today} onChange={(e) => onChange({ date: e.target.value })} type="date" value={form.date} />
+            <input className={INPUT} max={maxDate} min={today} onChange={(e) => onChange({ date: e.target.value })} type="date" value={form.date} />
           </label>
         ) : (
           <>
             <label className="flex flex-col gap-space-xs">
               <span className={SMALL_LABEL}>Inicio de vigencia</span>
-              <input className={INPUT} min={today} onChange={(e) => onChange({ validFrom: e.target.value })} type="date" value={form.validFrom} />
+              <input className={INPUT} max={maxDate} min={today} onChange={(e) => onChange({ validFrom: e.target.value })} type="date" value={form.validFrom} />
             </label>
             <label className="flex flex-col gap-space-xs">
               <span className={SMALL_LABEL}>Fin de vigencia</span>
-              <input className={INPUT} min={form.validFrom || today} onChange={(e) => onChange({ validTo: e.target.value })} type="date" value={form.validTo} />
+              <input className={INPUT} max={maxDate} min={form.validFrom || today} onChange={(e) => onChange({ validTo: e.target.value })} type="date" value={form.validTo} />
             </label>
           </>
         )}

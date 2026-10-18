@@ -46,3 +46,11 @@ export function detailMessages(details: unknown): string[] {
     .map((d: { mensaje?: string; message?: string }) => d?.mensaje ?? d?.message)
     .filter((m): m is string => typeof m === 'string');
 }
+
+/**
+ * Detalles a mostrar de un error al guardar o publicar. Un 409 (choque de horarios) se muestra
+ * solo con su mensaje (BUG-02 de la demo 1): el detalle por vuelo queda en la respuesta.
+ */
+export function errorDetails(err: unknown): string[] {
+  return err instanceof ApiRequestError && err.status !== 409 ? detailMessages(err.details) : [];
+}

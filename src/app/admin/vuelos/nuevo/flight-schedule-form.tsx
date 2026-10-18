@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import type { FormRoute, ScheduleFormData } from '@/lib/scheduling/form-data';
 import type { SerializedSchedule } from '@/lib/scheduling/serializers';
-import { ApiRequestError, apiRequest, detailMessages } from '../../api-client';
+import { apiRequest, errorDetails } from '../../api-client';
 import CheckPanel from './check-panel';
 import ClassOffersSection from './class-offers-section';
 import { ActionBar, PublishedPanel } from './form-actions';
@@ -96,7 +96,7 @@ export default function FlightScheduleForm({ data, draft }: Props) {
       setFeedback({
         tone: 'error',
         message: err instanceof Error ? err.message : 'No se pudo guardar',
-        details: err instanceof ApiRequestError ? detailMessages(err.details) : [],
+        details: errorDetails(err),
       });
     } finally {
       setSubmitting(null);

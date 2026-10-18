@@ -1,6 +1,4 @@
 import { z } from 'zod';
-import { daysInclusive } from '@/lib/scheduling/calendar';
-import { MAX_VALIDITY_DAYS } from '@/lib/scheduling/config';
 
 const trimmed = (max: number) => z.string().trim().max(max);
 const required = (max: number) => trimmed(max).min(1, 'Este campo es obligatorio');
@@ -244,12 +242,9 @@ export const flightScheduleSchema = z
     departureTime: timeOfDay,
     fares: classOffers,
   })
+  // El tope "hoy + 1 año" depende del reloj: lo valida el servicio (scheduling/service.ts).
   .refine((d) => d.validFrom <= d.validTo, {
     message: 'La fecha de fin no puede ser anterior a la de inicio',
-    path: ['validTo'],
-  })
-  .refine((d) => daysInclusive(d.validFrom, d.validTo) <= MAX_VALIDITY_DAYS, {
-    message: `La vigencia no puede superar ${MAX_VALIDITY_DAYS} dias`,
     path: ['validTo'],
   });
 

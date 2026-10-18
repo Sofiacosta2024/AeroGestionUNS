@@ -1,4 +1,4 @@
-import { formatFullDate } from '@/lib/format';
+import { OVERLAP_MESSAGE } from '@/lib/scheduling/conflicts';
 import type { CheckState } from './use-schedule-check';
 
 type Props = {
@@ -47,11 +47,10 @@ export default function CheckPanel({ check, ready }: Props) {
 
   return (
     <div className="flex flex-col gap-space-sm">
+      {/* BUG-02 de la demo 1: un unico mensaje; el detalle por vuelo sigue en la respuesta de la API. */}
       {conflicts.length > 0 && (
-        <Panel tone="error" icon="event_busy" title={`Choques de horario (${conflicts.length})`}>
-          <MessageList
-            messages={conflicts.map((c) => `${formatFullDate(c.date)} — ${c.message.replace(`${c.date}: `, '')}`)}
-          />
+        <Panel tone="error" icon="event_busy">
+          {OVERLAP_MESSAGE}
         </Panel>
       )}
       {issues.length > 0 && (

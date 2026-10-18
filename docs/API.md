@@ -205,7 +205,8 @@ nunca muestra borradores.
 
 Reglas (se validan al chequear, al guardar y al publicar):
 
-- No hay salidas en el pasado.
+- No hay salidas en el pasado: un `validFrom` anterior a hoy, o un vuelo de hoy a una hora
+  que ya pasó, responde `422`.
 - Desde un mismo aeropuerto, dos salidas no pueden estar a menos de
   `MIN_DEPARTURE_GAP_MINUTES` minutos (20 por defecto). Desde aeropuertos distintos sí
   pueden coincidir.
@@ -215,12 +216,14 @@ Reglas (se validan al chequear, al guardar y al publicar):
 - Cada clase (tarifa activa) se vende con al menos 1 asiento y su precio. El tope es por
   **cabina**: Economy + Economy Premium no superan los asientos de la cabina Economy del
   avión; Primera Clase no supera los de su cabina.
-- La vigencia es de un año como máximo.
+- `validTo` no puede pasar de hoy + 1 año, inclusive (por ejemplo, hoy 17/10/2026 permite
+  hasta el 17/10/2027). Si pasa, responde `422` con el detalle en `validTo`.
 
-Un borrador no reserva horario: si mientras tanto otro vuelo ocupa la franja, publicar
-responde `409`. Los conflictos vuelven en `error.details` con `kind`
-(`PAST_DEPARTURE`, `DEPARTURE_GAP`, `AIRCRAFT_BUSY`), `date`, `conflictingFlightCode` y
-`message`. Los datos inválidos (clases faltantes, asientos de más) responden `422`.
+Un choque responde `409` con el mensaje «Ya existe un vuelo o cronograma que se superpone con
+el ingresado». Un borrador no reserva horario: si mientras tanto otro vuelo ocupa la franja,
+publicar también responde `409`. Los conflictos vuelven en `error.details` con `kind`
+(`DEPARTURE_GAP`, `AIRCRAFT_BUSY`), `date`, `conflictingFlightCode` y `message`. Los datos
+inválidos (clases faltantes, asientos de más, fechas fuera de rango) responden `422`.
 
 `POST /api/flight-schedules/check` responde, sin guardar:
 

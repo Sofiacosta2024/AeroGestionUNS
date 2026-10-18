@@ -76,15 +76,15 @@ El cliente definió **3 clases** (los documentos de RF todavía dicen 2 y convie
 | --- | --- |
 | Quién | El panel es solo para `ADMIN`. `POST /api/flights` también lo permite a `MOSTRADOR` (pendiente de definir). |
 | Rutas | Un par origen-destino existe una sola vez y tiene duración obligatoria. Se puede crear desde el formulario. |
-| Vuelo único o cronograma | Vigencia (desde/hasta, máximo 1 año) + días de la semana + hora de salida en ART. Cada vuelo generado tiene su propio código. |
+| Vuelo único o cronograma | Vigencia (desde/hasta) + días de la semana + hora de salida en ART. Cada vuelo generado tiene su propio código. |
 | Código de vuelo | `AG-####` correlativo, de la secuencia `flight_code_seq`. Las pruebas consumieron AG-1437 a AG-1439 (ya borrados): el próximo es **AG-1440**. |
 | Llegada | Salida + duración de la ruta. |
-| Fechas | No se programan salidas en el pasado. |
+| Fechas | No se programan salidas en el pasado. La última fecha programable es hoy + 1 año, inclusive (BUG-01 de la demo 1); el calendario no ofrece fechas posteriores. Vale también para el vuelo único. |
 | Margen entre salidas | Desde un mismo aeropuerto, al menos 20 min entre salidas (`MIN_DEPARTURE_GAP_MINUTES`). Desde aeropuertos distintos pueden coincidir. |
 | Avión | Entre un aterrizaje y el siguiente despegue del mismo avión tiene que haber al menos `MIN_TURNAROUND_MINUTES` (2 h por defecto: desembarque, combustible), respecto del vuelo anterior y del siguiente. Puede despegar desde cualquier aeropuerto (se asume que vuelve vacío). Solo se ofrecen aviones `ACTIVE`. |
 | Asientos y precio | Cada clase con al menos 1 asiento y su precio (se propone el de catálogo). Tope por cabina contra el mapa del avión. |
 | Borrador y publicación | Un borrador no aparece en el buscador ni reserva horario. Al publicar se vuelve a validar y se generan los vuelos. |
-| Choques | Se detectan **mientras se carga** el formulario y otra vez al guardar y al publicar: nunca se guarda algo que choque. |
+| Choques | Se detectan **mientras se carga** el formulario y otra vez al guardar y al publicar: nunca se guarda algo que choque. La pantalla muestra un único mensaje, «Ya existe un vuelo o cronograma que se superpone con el ingresado» (BUG-02 de la demo 1); el detalle por vuelo queda en la respuesta de la API. |
 | Itinerario | Planilla del día: los vuelos que salen en una fecha. Es una vista, no tiene tabla. |
 
 ---
@@ -144,6 +144,9 @@ Postgres para que dos admins no tomen la misma franja a la vez.
    - La misma hora desde otro aeropuerto (por ejemplo AEP) está permitida.
    - Usar un avión que aterriza hace menos de 2 h (o que despega antes de que pasen 2 h desde
      el aterrizaje del vuelo nuevo) marca un choque. A las 2 h exactas está permitido.
+   - Ante cualquier choque la pantalla muestra solo «Ya existe un vuelo o cronograma que se
+     superpone con el ingresado».
+   - El calendario no deja elegir fechas posteriores a hoy + 1 año.
    - Asignar más asientos que los de la cabina da error.
    - Un borrador no aparece en el buscador; después de publicarlo, sí.
    - Como pasajero, `/admin/*` redirige a `/vuelos`. Sin sesión, a `/login`.
