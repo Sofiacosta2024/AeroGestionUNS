@@ -77,6 +77,9 @@ export default function ConsultaClient() {
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // Evita requests duplicadas si se envia de nuevo antes de que el estado
+    // `loading` vuelva a renderizar (doble Enter o clic rapido).
+    if (loading) return;
     // El detalle anterior se descarta al iniciar una consulta nueva: nunca se
     // muestra la reserva previa mientras se resuelve (o falla) la siguiente.
     setResult(null);

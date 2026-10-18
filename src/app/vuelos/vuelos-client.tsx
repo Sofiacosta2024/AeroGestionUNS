@@ -305,6 +305,13 @@ if (slotDef.to) flightQuery.set('timeTo', slotDef.to);
             >
               Buscar Vuelos
             </a>
+            <a
+              className="px-space-md py-space-sm rounded-lg font-label-lg text-label-lg text-primary-fixed-dim hover:bg-primary hover:text-on-primary transition-colors"
+              data-path="consultar-reserva"
+              href="/reserva"
+            >
+              Consultar Reserva
+            </a>
             {PENDING_SECTIONS.map((s) => (
               <button
                 key={s.path}
@@ -390,6 +397,12 @@ if (slotDef.to) flightQuery.set('timeTo', slotDef.to);
               href="/vuelos"
             >
               Buscar Vuelos
+            </a>
+            <a
+              className="shrink-0 px-3 py-1.5 rounded-lg font-label-md text-label-md text-primary-fixed-dim bg-primary/60"
+              href="/reserva"
+            >
+              Consultar
             </a>
             {PENDING_SECTIONS.map((s) => (
               <button
