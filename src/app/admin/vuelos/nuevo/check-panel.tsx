@@ -15,7 +15,7 @@ export default function CheckPanel({ check, ready }: Props) {
   if (!ready) {
     return (
       <Panel tone="neutral" icon="info">
-        Completá ruta, avión, fecha y hora para verificar disponibilidad.
+        Completá ruta, avión, fecha y hora (y los días de operación, si es un cronograma) para verificar disponibilidad.
       </Panel>
     );
   }

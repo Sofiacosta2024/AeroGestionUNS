@@ -76,7 +76,7 @@ El cliente definió **3 clases** (los documentos de RF todavía dicen 2 y convie
 | --- | --- |
 | Quién | El panel es solo para `ADMIN`. `POST /api/flights` también lo permite a `MOSTRADOR` (pendiente de definir). |
 | Rutas | Un par origen-destino existe una sola vez y tiene duración obligatoria. Se puede crear desde el formulario. |
-| Vuelo único o cronograma | Vigencia (desde/hasta) + días de la semana + hora de salida en ART. Cada vuelo generado tiene su propio código. |
+| Vuelo único o cronograma | Vigencia (desde/hasta) + días de la semana + hora de salida en ART. Cada vuelo generado tiene su propio código. Los días arrancan sin marcar; el formulario muestra cuántos vuelos se generan, el primero y el último, y avisa si el inicio de vigencia no es un día de operación (BUG-04 de la demo 1). |
 | Código de vuelo | `AG-####` correlativo, de la secuencia `flight_code_seq`. Las pruebas consumieron AG-1437 a AG-1439 (ya borrados): el próximo es **AG-1440**. |
 | Llegada | Salida + duración de la ruta. |
 | Fechas | No se programan salidas en el pasado. La última fecha programable es hoy + 1 año, inclusive (BUG-01 de la demo 1); el calendario no ofrece fechas posteriores. Vale también para el vuelo único. |

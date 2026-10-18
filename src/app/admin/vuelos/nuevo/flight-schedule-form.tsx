@@ -12,7 +12,7 @@ import {
   arrivalPreview,
   findRoute,
   initialFormState,
-  plannedFlightsCount,
+  plannedFlightDates,
   toScheduleInput,
   type FormState,
   type OfferDraft,
@@ -50,6 +50,7 @@ export default function FlightScheduleForm({ data, draft }: Props) {
   const route = findRoute(routes, form.origin, form.destination);
   const aircraft = data.aircraft.find((a) => a.id === form.aircraftId) ?? null;
   const input = useMemo(() => toScheduleInput(form, route), [form, route]);
+  const plannedDates = useMemo(() => plannedFlightDates(form), [form]);
   const check = useScheduleCheck(input);
   const canSubmit = input !== null && check.result?.canSave === true && !check.loading;
 
@@ -134,7 +135,7 @@ export default function FlightScheduleForm({ data, draft }: Props) {
             form={form}
             onChange={update}
             onRouteCreated={addRoute}
-            plannedCount={plannedFlightsCount(form)}
+            plannedDates={plannedDates}
             route={route}
             rules={data.rules}
             today={data.today}
@@ -144,7 +145,7 @@ export default function FlightScheduleForm({ data, draft }: Props) {
           {feedback?.tone === 'error' && <FeedbackBanner feedback={feedback} />}
           <ActionBar
             canSubmit={canSubmit}
-            flightsCount={check.result?.flightsCount ?? plannedFlightsCount(form)}
+            flightsCount={check.result?.flightsCount ?? plannedDates.length}
             isDraft={draftId !== null}
             onPublish={() => save(true)}
             onSaveDraft={() => save(false)}

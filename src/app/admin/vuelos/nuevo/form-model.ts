@@ -29,7 +29,7 @@ export type FormState = {
   offers: Record<string, OfferDraft>;
 };
 
-/** Lunes a viernes: la opcion por defecto del diseno ("Dias habiles"). */
+/** Lunes a viernes: filtro rapido "Dias habiles". */
 export const WORKDAYS = [1, 2, 3, 4, 5];
 export const WEEKEND = [0, 6];
 export const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
@@ -66,7 +66,9 @@ export function initialFormState(data: ScheduleFormData, draft: SerializedSchedu
     date: '',
     validFrom: '',
     validTo: '',
-    weekdays: WORKDAYS,
+    // BUG-04 de la demo 1: con lun-vie preseleccionado, un cronograma que arrancaba un
+    // sabado parecia no tener vuelo ese dia. El admin elige los dias a mano.
+    weekdays: [],
     departureTime: '',
     offers,
   };
@@ -112,11 +114,11 @@ export function toScheduleInput(state: FormState, route: FormRoute | null): Sche
   };
 }
 
-/** Cantidad de vuelos que generaria el periodo elegido (vista previa inmediata). */
-export function plannedFlightsCount(state: FormState): number {
+/** Fechas de los vuelos que generaria el periodo elegido (vista previa inmediata). */
+export function plannedFlightDates(state: FormState): string[] {
   const period = effectivePeriod(state);
-  if (!period.validFrom || !period.validTo || period.validFrom > period.validTo) return 0;
-  return expandOperatingDates(period.validFrom, period.validTo, period.weekdays).length;
+  if (!period.validFrom || !period.validTo || period.validFrom > period.validTo) return [];
+  return expandOperatingDates(period.validFrom, period.validTo, period.weekdays);
 }
 
 /** Hora de llegada (salida + duracion), con aviso si cae al dia siguiente. */
