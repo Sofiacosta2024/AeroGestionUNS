@@ -20,7 +20,7 @@ export default function ConfirmationActions({
     if (pdfBusy) return;
     setPdfBusy(kind);
     try {
-      const { buildPassPdf, buildInvoicePdf } = await import('./pdf-documents');
+      const { buildPassPdf, buildInvoicePdf } = await import('@/lib/pdf/documents');
       const pdf =
         kind === 'pass' ? buildPassPdf(documents) : buildInvoicePdf(documents);
       pdf.save(`${kind === 'pass' ? 'pasaje' : 'factura'}-${documents.bookingCode}.pdf`);
