@@ -46,7 +46,7 @@ export async function loadScheduleContext(
   routeId: string,
   aircraftId: string,
 ): Promise<ScheduleContext | null> {
-  const [route, aircraft, seatGroups, classes] = await Promise.all([
+  const [route, aircraft, cabinSeats, classes] = await Promise.all([
     db.route.findUnique({
       where: { id: routeId },
       select: {
@@ -61,7 +61,7 @@ export async function loadScheduleContext(
       where: { id: aircraftId },
       select: { id: true, registration: true, status: true },
     }),
-    db.seat.groupBy({ by: ['cabinClass'], where: { aircraftId }, _count: { _all: true } }),
+    loadCabinSeats(db, aircraftId),
     db.fare.findMany({
       where: { isActive: true },
       select: { id: true, name: true, cabinClass: true },
@@ -71,11 +71,13 @@ export async function loadScheduleContext(
 
   if (!route || !aircraft) return null;
 
-  const cabinSeats: CabinSeats = Object.fromEntries(
-    seatGroups.map((g) => [g.cabinClass, g._count._all] as [CabinClass, number]),
-  );
-
   return { route, aircraft, cabinSeats, classes };
+}
+
+/** Asientos del mapa del avion, por cabina. */
+export async function loadCabinSeats(db: Db, aircraftId: string): Promise<CabinSeats> {
+  const groups = await db.seat.groupBy({ by: ['cabinClass'], where: { aircraftId }, _count: { _all: true } });
+  return Object.fromEntries(groups.map((g) => [g.cabinClass, g._count._all] as [CabinClass, number]));
 }
 
 /** Deja afuera al vuelo que se reprograma (US-11B): no choca consigo mismo. */
@@ -331,4 +333,51 @@ export async function applyReschedule(
     });
   }
   await db.bookingFlight.updateMany({ where: { flightId }, data: { departureAt: itinerary.departureAt } });
+}
+
+// ---------------------------------------------------------------------------
+// Precio y capacidad por clase de un vuelo publicado (US-11A)
+// ---------------------------------------------------------------------------
+
+const flightFaresSelect = {
+  id: true,
+  code: true,
+  status: true,
+  aircraftId: true,
+  departureAt: true,
+  route: {
+    select: {
+      originAirport: { select: { iataCode: true, city: true } },
+      destinationAirport: { select: { iataCode: true, city: true } },
+    },
+  },
+  aircraft: { select: { registration: true, model: true } },
+  fares: {
+    select: {
+      id: true,
+      fareId: true,
+      price: true,
+      currency: true,
+      seatCapacity: true,
+      availableSeats: true,
+      fare: { select: { name: true, cabinClass: true } },
+    },
+    orderBy: { fare: { basePrice: 'asc' } },
+  },
+} satisfies Prisma.FlightSelect;
+
+export type FlightWithFares = Prisma.FlightGetPayload<{ select: typeof flightFaresSelect }>;
+
+export function findFlightWithFares(db: Db, id: string): Promise<FlightWithFares | null> {
+  return db.flight.findUnique({ where: { id }, select: flightFaresSelect });
+}
+
+/** Precio y capacidad nuevos por fila de `flight_fares`; los disponibles ya vienen recalculados. */
+export async function updateFlightFares(
+  db: Db,
+  fares: readonly { id: string; price: number; seatCapacity: number; availableSeats: number }[],
+): Promise<void> {
+  for (const { id, ...data } of fares) {
+    await db.flightFare.update({ where: { id }, data });
+  }
 }
