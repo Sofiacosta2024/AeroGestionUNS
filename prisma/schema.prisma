@@ -127,6 +127,12 @@ enum ScheduleStatus {
   PUBLISHED
 }
 
+/// Tipo de comprobante PDF que se emite por una reserva paga (RF-05).
+enum ComprobanteTipo {
+  PASAJE
+  FACTURA
+}
+
 // ---------------------------------------------------------------------------
 // IDENTIDAD Y ACCESO
 // ---------------------------------------------------------------------------
@@ -495,6 +501,7 @@ model Booking {
   passengers      BookingPassenger[]
   payments        Payment[]
   seatLocks       SeatLock[]
+  comprobantes    Comprobante[]
 
   @@index([userId])
   @@index([status])
@@ -567,6 +574,8 @@ model Payment {
   createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  comprobantes   Comprobante[]
+
   @@index([bookingId])
   @@index([status])
   @@map("payments")
@@ -627,4 +636,28 @@ model SeatLock {
   @@index([bookingId])
   @@index([expiresAt])
   @@map("seat_locks")
+}
+
+// ---------------------------------------------------------------------------
+// COMPROBANTES EMITIDOS (RF-05)
+// ---------------------------------------------------------------------------
+
+/// Constancia de emision de un comprobante PDF (RF-05). No guarda el archivo:
+/// el PDF se arma al momento de la descarga a partir de la reserva.
+model Comprobante {
+  id             String          @id @default(cuid())
+  bookingId      String          @map("booking_id")
+  booking        Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  /// ID de la transaccion de pago con la que se emitio
+  paymentId      String          @map("payment_id")
+  payment        Payment         @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  tipo           ComprobanteTipo
+  /// Copia de la referencia del gateway al momento de emitir
+  transactionRef String?         @map("transaction_ref") @db.VarChar(64)
+  emittedAt      DateTime        @default(now()) @map("emitted_at") @db.Timestamptz(3)
+
+  /// Un pasaje y una factura por reserva: emision idempotente
+  @@unique([bookingId, tipo])
+  @@index([paymentId])
+  @@map("comprobantes")
 }
