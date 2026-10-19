@@ -358,6 +358,26 @@ El servidor resuelve cada precio desde `flight_fares`, descuenta un asiento por 
 dentro de una transacción (con `updateMany` condicional para no sobrevender ante
 concurrencia) y calcula `totalAmount`.
 
+## Comprobantes (RF-05)
+
+| Método | Ruta | Rol | Descripción |
+| --- | --- | --- | --- |
+| `GET` | `/api/v1/reservas/:codigo/comprobantes/pasaje` | dueño o `MOSTRADOR` | Descarga binaria del pasaje en PDF. |
+| `GET` | `/api/v1/reservas/:codigo/comprobantes/factura` | dueño o `MOSTRADOR` | Descarga binaria de la factura en PDF. |
+
+Responden `application/pdf` con `content-disposition: attachment`, así que el navegador
+descarga el archivo en lugar de mostrarlo; el nombre (`pasaje-AG-XXXXXX.pdf`,
+`factura-AG-XXXXXX.pdf`) viaja en el header.
+
+A diferencia de `GET /api/bookings/:code`, estas rutas **no se pueden redactar** (un PDF no
+tiene versión pública): exigen sesión, ser el dueño o de Operations (`403` en caso
+contrario) y además un **pago aprobado** (`409` si la reserva todavía no se cobró). `404` si
+el código no existe. El presupuesto de respuesta es **menos de 5 s** (RF-05).
+
+El PDF se arma en el momento de la descarga a partir de la reserva (`toTravelDocuments` →
+`buildPassPdf` / `buildInvoicePdf`, ver `src/lib/pdf/documents.ts`). La **emisión** del
+comprobante se registra aparte, al aprobarse el pago, en la tabla `comprobantes`.
+
 ## Administración
 
 | Método | Ruta | Rol | Descripción |

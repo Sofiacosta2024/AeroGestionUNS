@@ -134,7 +134,7 @@ docs/
 
 - [`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md) — capas, sesión, zona horaria, temas.
 - [`docs/API.md`](docs/API.md) — los endpoints, convenciones y ejemplos.
-- [`docs/MODELO-DATOS.md`](docs/MODELO-DATOS.md) — las 20 tablas, sus claves y decisiones.
+- [`docs/MODELO-DATOS.md`](docs/MODELO-DATOS.md) — las 22 tablas, sus claves y decisiones.
 - [`docs/RF-01-ALTA-VUELOS.md`](docs/RF-01-ALTA-VUELOS.md) — qué se hizo en RF-01 (alta y publicación de vuelos) y qué tienen que saber los demás subgrupos.
 
 ---

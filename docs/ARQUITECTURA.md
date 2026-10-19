@@ -104,6 +104,9 @@ sesión, así que conocerlo no puede dar acceso a datos nominales:
 - `canViewBookingPii()` exige que el usuario sea el dueño de la reserva o de Operations.
   Los subrecursos (`/passengers`, `/baggage`, `/payments`, `/boarding-passes`) la
   exigen siempre: son datos de viaje nominales.
+- Los comprobantes en PDF (`/api/v1/reservas/:codigo/comprobantes/…`, RF-05) usan la misma
+  regla, pero **no se redactan**: un PDF enmascarado no sirve de nada, así que exigen sesión
+  y, además, un pago aprobado.
 - `GET /api/aircraft/:id/seats` es público porque el mapa de cabina hace falta para
   reservar, pero los nombres de los pasajeros asignados solo se devuelven a Operations.
   El campo `occupied` alcanza para elegir butaca.
