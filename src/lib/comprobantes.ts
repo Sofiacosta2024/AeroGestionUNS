@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import type { jsPDF } from 'jspdf';
+import type { PaymentStatus } from '@prisma/client';
 import { ApiError } from './api';
 import { getCurrentUser, type AuthUser } from './auth';
 import {
-  bookingInclude,
   canViewBookingPii,
-  type BookingWithRelations,
+  comprobanteInclude,
+  type BookingForDocuments,
 } from './bookings';
 import { prisma } from './prisma';
 import { toTravelDocuments, type TravelDocuments } from './travel-documents';
@@ -18,12 +19,16 @@ import { toTravelDocuments, type TravelDocuments } from './travel-documents';
  * Separado del acceso a datos para poder testear la regla sin base de datos.
  */
 
-type BookingPayment = BookingWithRelations['payments'][number];
+/** Lo minimo que necesita la regla de acceso. */
+type ComprobanteBooking = {
+  userId: string | null;
+  payments: { status: PaymentStatus }[];
+};
 
-export function requireComprobanteAccess(
+export function requireComprobanteAccess<B extends ComprobanteBooking>(
   user: AuthUser | null,
-  booking: BookingWithRelations,
-): BookingPayment {
+  booking: B,
+): B['payments'][number] {
   if (!canViewBookingPii(user, booking))
     throw ApiError.forbidden('No tiene permisos para ver esta reserva');
 
@@ -37,15 +42,17 @@ export function requireComprobanteAccess(
  * Carga una reserva para emitir un comprobante. Compartido por los endpoints de
  * pasaje y factura: 404 si el codigo no existe, 403 si el usuario no puede ver
  * los datos personales y 409 si todavia no hay un pago aprobado.
+ *
+ * Usa `comprobanteInclude` (9 consultas) en lugar de `bookingInclude` (13).
  */
 export async function loadComprobanteContext(codigo: string): Promise<{
-  booking: BookingWithRelations;
-  payment: BookingPayment;
+  booking: BookingForDocuments;
+  payment: BookingForDocuments['payments'][number];
   documents: TravelDocuments;
 }> {
   const booking = await prisma.booking.findUnique({
     where: { bookingCode: codigo.toUpperCase() },
-    include: bookingInclude,
+    include: comprobanteInclude,
   });
   if (!booking) throw ApiError.notFound('Reserva no encontrada');
 

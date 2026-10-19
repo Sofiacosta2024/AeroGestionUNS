@@ -1,4 +1,4 @@
-import type { BookingWithRelations } from './bookings';
+import type { BookingForDocuments } from './bookings';
 
 /**
  * Documentos de viaje que se descargan desde /confirmación/[code]:
@@ -59,7 +59,7 @@ export type TravelDocuments = {
   invoice: InvoiceDocument;
 };
 
-export function toTravelDocuments(booking: BookingWithRelations): TravelDocuments {
+export function toTravelDocuments(booking: BookingForDocuments): TravelDocuments {
   const currency = booking.currency;
   const flights = [...booking.flights].sort(
     (a, b) => +a.departureAt - +b.departureAt,
