@@ -4,7 +4,7 @@ import { toDateInput } from '@/lib/format';
 import { prisma } from '@/lib/prisma';
 import type { RescheduleInput } from '@/lib/validation';
 import { addMinutes, localDateTimeToUtc, localTimeOf } from './calendar';
-import { CABIN_LABEL, fitClassesToCabins, type ClassLoad, type OfferIssue } from './capacity';
+import { CABIN_LABEL, classLoadOf, fitClassesToCabins, type OfferIssue } from './capacity';
 import { schedulingRules } from './config';
 import { OVERLAP_MESSAGE, type PlannedFlight, type ScheduleConflict } from './conflicts';
 import * as repo from './repository';
@@ -67,12 +67,6 @@ export type RescheduleEvaluation = {
 
 type Evaluation = { view: RescheduleEvaluation; flight: FlightToReschedule; planned: PlannedFlight };
 
-function loadOf(f: FlightToReschedule['fares'][number]): ClassLoad {
-  // Filas anteriores a RF-01 sin capacidad cargada: se toman como sin ventas.
-  const capacity = f.seatCapacity ?? f.availableSeats;
-  return { fareId: f.fareId, cabinClass: f.fare.cabinClass, capacity, sold: capacity - f.availableSeats };
-}
-
 async function evaluate(db: Db, flightId: string, input: RescheduleInput, now: Date): Promise<Evaluation> {
   const flight = await repo.findFlightToReschedule(db, flightId);
   if (!flight) throw ApiError.notFound('Vuelo no encontrado');
@@ -94,7 +88,8 @@ async function evaluate(db: Db, flightId: string, input: RescheduleInput, now: D
     findConflicts(db, ctx, [planned], schedulingRules(), flight.id),
     repo.countFlightBookings(db, flight.id, now),
   ]);
-  const loads = flight.fares.map(loadOf);
+  // Cambio US-11A: el calculo de vendidos por clase paso a capacity.ts (`classLoadOf`) para compartirlo.
+  const loads = flight.fares.map(classLoadOf);
   const fit = aircraftChanged ? fitClassesToCabins(loads, ctx.cabinSeats) : null;
 
   const issues: OfferIssue[] = [];

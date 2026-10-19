@@ -18,6 +18,31 @@ export function formatArs(value: number | string | null | undefined): string {
   return ARS.format(Number.isFinite(n) ? n : 0);
 }
 
+const AMOUNT_INPUT = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 2 });
+
+/** 64200.5 -> "64.200,5": importe editable en un campo de texto (US-11A). */
+export function formatAmountInput(value: number): string {
+  return AMOUNT_INPUT.format(value);
+}
+
+/**
+ * Importe escrito a mano en formato es-AR -> number (NaN si no es un importe valido).
+ * - Con coma: los puntos son de miles y la coma es decimal ("64.200,50" -> 64200.5).
+ * - Sin coma: puntos seguidos de 3 cifras son de miles ("64.200" -> 64200); un unico
+ *   punto con 1 o 2 cifras es decimal ("64200.5" -> 64200.5).
+ * Hasta 2 decimales, como la columna `price` (Decimal 12,2).
+ */
+export function parseAmountInput(raw: string): number {
+  const text = raw.trim();
+  let normalized: string | null = null;
+  if (/^\d{1,3}(\.\d{3})*(,\d{1,2})?$/.test(text) || /^\d+(,\d{1,2})?$/.test(text)) {
+    normalized = text.replace(/\./g, '').replace(',', '.');
+  } else if (/^\d+(\.\d{1,2})?$/.test(text)) {
+    normalized = text;
+  }
+  return normalized === null ? NaN : Number(normalized);
+}
+
 /** "1h 10m" a partir de la duracion en minutos. */
 export function formatDuration(minutes: number | null | undefined): string {
   if (!minutes && minutes !== 0) return '-';

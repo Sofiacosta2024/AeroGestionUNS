@@ -281,6 +281,31 @@ export const flightRescheduleSchema = z.object({
 
 export type RescheduleInput = z.output<typeof flightRescheduleSchema>;
 
+/**
+ * Precio y capacidad por clase de un vuelo publicado (US-11A). Solo se editan las clases
+ * que el vuelo ya tiene; pueden venir todas o solo las que cambian. No usa `money`
+ * porque acepta 0.
+ */
+export const flightFaresUpdateSchema = z.object({
+  fares: z
+    .array(
+      z.object({
+        fareId: z.string().cuid('Clase invalida'),
+        seatCapacity: z.coerce
+          .number()
+          .int('La capacidad debe ser un numero entero')
+          .positive('La capacidad debe ser mayor a 0')
+          .max(1000),
+        price: z.coerce.number().positive('El precio debe ser mayor a 0').max(99_999_999),
+      }),
+    )
+    .min(1, 'No hay clases para actualizar')
+    .max(10)
+    .refine((fares) => new Set(fares.map((f) => f.fareId)).size === fares.length, 'Hay clases repetidas'),
+});
+
+export type FlightFaresUpdateInput = z.output<typeof flightFaresUpdateSchema>;
+
 export const scheduleListQuery = paginationQuery.extend({
   status: z.enum(['DRAFT', 'PUBLISHED']).optional(),
 });
