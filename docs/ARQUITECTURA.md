@@ -125,10 +125,13 @@ sesión, así que conocerlo no puede dar acceso a datos nominales:
   descartar, alta puntual). Toda escritura vuelve a validar dentro de la transacción.
 - **`reschedule.ts`**: la reprogramación de un vuelo publicado (US-11B). Reusa las reglas
   y la detección de choques de `service.ts`, sin contar al propio vuelo.
+- **`flight-fares.ts`**: precio y capacidad por clase de un vuelo publicado (US-11A). La
+  regla (no menos que lo vendido, tope por cabina) es `validateClassEdits` de
+  `capacity.ts`, que también usa la pantalla para validar mientras se escribe.
 - **`itinerary.ts`**: la planilla del día (consulta de solo lectura).
 
-Los Route Handlers de `/api/flight-schedules`, `/api/admin/flights/:id/itinerary` y
-`/api/itinerary` solo validan la entrada, exigen el rol y llaman al servicio. `POST
+Los Route Handlers de `/api/flight-schedules`, `/api/admin/flights/:id/itinerary`,
+`/api/admin/flights/:id/fares` y `/api/itinerary` solo validan la entrada, exigen el rol y llaman al servicio. `POST
 /api/flights` y `PATCH /api/flights/:id` usan los mismos servicios, así las reglas no están
 duplicadas. La reprogramación toma el mismo lock que la publicación y además bloquea las filas
 del vuelo, así una compra simultánea (RF-03) espera a que termine.

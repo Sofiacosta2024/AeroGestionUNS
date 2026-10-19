@@ -297,6 +297,57 @@ Respuestas de error:
 }
 ```
 
+## Tarifas y capacidad por clase (US-11A)
+
+Cambia el precio y la capacidad de las clases de **un** vuelo publicado. Pantalla:
+`/admin/vuelos/:id/tarifas`, desde la acción «Editar tarifas» de la planilla del día. La US
+lo pide como `PATCH /api/v1/admin/vuelos/{id}/tarifas`. Se implementó con la misma forma que
+el resto de los endpoints de administración.
+
+| Método | Ruta | Rol | Descripción |
+| --- | --- | --- | --- |
+| `PATCH` | `/api/admin/flights/:id/fares` | `ADMIN` | Guarda precio y capacidad por clase. |
+
+Recibe solo las clases que cambian, o todas:
+
+```json
+{ "fares": [ { "fareId": "<Economy>", "seatCapacity": 126, "price": 64200 } ] }
+```
+
+Reglas:
+
+- Solo vuelos `SCHEDULED` o `DELAYED` que todavía no salieron (si no, `409`). Es la misma
+  condición que la reprogramación.
+- Capacidad entera y precio mayores a 0 (hasta 2 decimales). Si no, `422`.
+- Solo se editan las clases que el vuelo ya tiene. Una clase ajena responde `422`.
+- La capacidad no baja de lo vendido o reservado en la clase (`seat_capacity −
+  available_seats`, que incluye los bloqueos de compra vigentes). Los bloqueos vencidos se
+  liberan antes de calcular.
+- Tope por cabina, igual que en el alta: Economy + Economy Premium ≤ asientos Economy del
+  avión y Primera ≤ los suyos. Solo se controla si la cabina **sube**: un vuelo anterior a
+  RF-01 que ya se pasa del tope puede bajar o quedar igual.
+- Lo vendido conserva su precio (`booking_flights.price` y `bookings.total_amount` se
+  congelan al reservar). El precio nuevo rige para las ventas que vienen y el buscador lo
+  muestra enseguida.
+- `available_seats` se recalcula como capacidad nueva − vendidos. El vuelo y sus clases
+  quedan bloqueados durante el guardado, así una compra simultánea (RF-03) espera.
+
+Respuestas de error:
+
+- Capacidad menor a lo vendido: `422` con «No se puede reducir la capacidad a X asientos
+  porque ya existen Y pasajes vendidos en esta clase.». El `campo` del detalle es
+  `fares.<fareId>.seatCapacity`.
+- Cabina excedida: `422` con el mismo mensaje que el alta, en `campo` `fares`.
+- Sin cambios: `400`.
+
+Responde el vuelo como quedó (`flight`, con `classes` de `price`, `capacity` y `sold`) y
+`changes`, con el antes y el después de cada clase modificada, que es lo que se audita
+(`UPDATE_FARES`).
+
+*Pendiente para el equipo:* el `POST /api/flights/:id/fares` anterior (rol `MOSTRADOR`)
+sigue editando `price` y `available_seats` sin estas reglas. Mostrador no debería poder
+editar tarifas.
+
 Al guardar también se actualiza la salida copiada en `booking_flights.departure_at` y queda
 en `audit_logs` (`action = RESCHEDULE`) el itinerario anterior y el nuevo, los pasajeros
 afectados y las clases cuya capacidad se ajustó. La respuesta trae lo mismo. El aviso por

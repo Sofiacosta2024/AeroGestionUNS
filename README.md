@@ -38,6 +38,7 @@ La aplicación queda en `http://localhost:3000`:
 - `/admin/vuelos/nuevo` — alta y publicación de vuelos (RF-01, solo `ADMIN`).
 - `/admin/itinerario` — planilla del día y borradores pendientes (RF-01, solo `ADMIN`).
 - `/admin/vuelos/:id/reprogramar` — reprogramar fecha, hora, ruta o avión de un vuelo (US-11B, solo `ADMIN`).
+- `/admin/vuelos/:id/tarifas` — editar precio y capacidad por clase de un vuelo (US-11A, solo `ADMIN`).
 - `/` — redirige a `/vuelos` si hay sesión, a `/login` si no.
 
 ### Variables de entorno
