@@ -548,6 +548,7 @@ model BookingPassenger {
   @@index([bookingId])
   @@index([passengerId])
   @@index([seatId])
+  @@index([bookingId, lastName], map: "booking_passengers_booking_id_last_name_idx")
   @@map("booking_passengers")
 }
 

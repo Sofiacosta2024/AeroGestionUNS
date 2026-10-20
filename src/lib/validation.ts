@@ -421,6 +421,40 @@ export const bookingUpdateSchema = z
   })
   .refine((d) => Object.keys(d).length > 0, { message: 'No hay campos para actualizar' });
 
+export const adminBookingSearchQuery = z
+  .object({
+    bookingCode: z.string().trim().max(20).optional(),
+    documentNumber: z.string().trim().max(32).optional(),
+    lastName: z.string().trim().max(80).optional(),
+    flightCode: z.string().trim().max(20).optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(50).default(20),
+  })
+  .refine(
+    (value) =>
+      [value.bookingCode, value.documentNumber, value.lastName, value.flightCode].some(
+        (v) => !!v && v.trim().length > 0,
+      ),
+    {
+      message: 'Debe ingresar al menos un criterio de búsqueda',
+      path: ['bookingCode'],
+    },
+  );
+
+export const bookingPassengerAdminUpdateSchema = z
+  .object({
+    firstName: required(80).optional(),
+    lastName: required(80).optional(),
+    documentType: documentTypeEnum.optional(),
+    documentNumber: required(32).optional(),
+    birthDate: dateIso.optional().nullable(),
+    passengerId: z.string().cuid().optional().nullable(),
+    seatId: z.string().cuid().optional().nullable(),
+  })
+  .refine((d) => Object.keys(d).length > 0, {
+    message: 'No hay campos para actualizar',
+  });
+
 export const bookingPassengerSchema = z.object({
   passengerId: z.string().cuid().optional().nullable(),
   firstName: required(80),
@@ -469,4 +503,66 @@ export const auditQuery = paginationQuery.extend({
   action: trimmed(64).optional(),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+
+// ---------------------------------------------------------------------------
+// CONSULTA PUBLICA DE RESERVA (US-14A / RF-14)
+// ---------------------------------------------------------------------------
+
+/** Prefijo publico de los codigos de reserva (`AG-XXXXXX`, ver `codes.ts`). */
+const BOOKING_CODE_PREFIX = 'AG-';
+/** Formato canonico almacenado: prefijo + exactamente 6 caracteres alfanumericos. */
+const BOOKING_CODE_RE = /^AG-[A-Z0-9]{6}$/;
+/** Letras Unicode (incluye tildes y enie) separadas por espacios o guiones. */
+const SPANISH_LAST_NAME_RE = /^\p{L}+(?:[ -]+\p{L}+)*$/u;
+
+const countLetters = (value: string): number => (value.match(/\p{L}/gu) ?? []).length;
+
+/**
+ * Normaliza un codigo de reserva a la forma canonica almacenada: recorta
+ * espacios exteriores, pasa a mayusculas y antepone el prefijo `AG-`.
+ * Acepta entradas con o sin prefijo (ej. `ag-7f3k9q` y `7F3K9Q`).
+ */
+export function normalizeBookingCode(value: string): string {
+  const upper = value.trim().toUpperCase();
+  const suffix = upper.startsWith(BOOKING_CODE_PREFIX)
+    ? upper.slice(BOOKING_CODE_PREFIX.length)
+    : upper;
+  return `${BOOKING_CODE_PREFIX}${suffix}`;
+}
+
+/**
+ * Normaliza un apellido: recorta espacios exteriores y compone los diacriticos
+ * a la forma NFC. El NFC evita que un apellido pegado en descomposicion (NFD,
+ * comun desde macOS) se rechace o no matchee por diferencias de bytes entre la
+ * tilde suelta y la letra precompuesta.
+ */
+export function normalizeLastName(value: string): string {
+  return value.trim().normalize('NFC');
+}
+
+/**
+ * Datos de la consulta publica de una reserva: codigo + apellido de un pasajero.
+ * La validacion vive en el backend para no depender solo del frontend.
+ */
+export const bookingPublicLookupSchema = z.object({
+  code: z
+    .string({ required_error: 'El codigo de reserva es obligatorio' })
+    .trim()
+    .min(1, 'El codigo de reserva es obligatorio')
+    .transform(normalizeBookingCode)
+    .refine(
+      (v) => BOOKING_CODE_RE.test(v),
+      'El codigo de reserva debe tener el formato AG-XXXXXX (6 caracteres alfanumericos)',
+    ),
+  lastName: z
+    .string({ required_error: 'El apellido es obligatorio' })
+    .transform(normalizeLastName)
+    .refine((v) => v.length >= 1, 'El apellido es obligatorio')
+    .refine((v) => v.length <= 80, 'El apellido no puede superar los 80 caracteres')
+    .refine(
+      (v) => SPANISH_LAST_NAME_RE.test(v),
+      'El apellido solo puede contener letras, espacios y guiones',
+    )
+    .refine((v) => countLetters(v) >= 2, 'El apellido debe tener al menos 2 letras'),
 });

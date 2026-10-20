@@ -95,3 +95,22 @@ export function canManage(user: AuthUser | null): boolean {
 export function isAdmin(user: AuthUser | null): boolean {
   return user?.role === UserRole.ADMIN;
 }
+
+const ROLE_LABEL: Record<string, string> = {
+  PASAJERO: 'Pasajero',
+  MOSTRADOR: 'Mostrador Operativo',
+  ADMIN: 'Administrador',
+};
+
+/**
+ * Convierte el usuario de auth al formato del chip del SiteHeader. Vive en un
+ * modulo server-safe (no en el Client Component) para poder invocarlo desde
+ * page.tsx de /reserva y /vuelos.
+ */
+export function toSiteHeaderUser(user: AuthUser | null): { name: string; role: string } | null {
+  if (!user) return null;
+  return {
+    name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email,
+    role: ROLE_LABEL[user.role] ?? user.role,
+  };
+}

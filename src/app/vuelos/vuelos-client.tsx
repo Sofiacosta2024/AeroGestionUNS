@@ -1,8 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useClerk } from '@clerk/nextjs';
 import { formatDayMonth, formatDuration, formatFullDate, formatTime, formatWeekday } from '@/lib/format';
 import { localWeekDays } from '@/lib/dates';
 import type {
@@ -12,6 +10,7 @@ import type {
   WeeklyFareDay,
 } from '@/lib/view-models';
 import type { SerializedPrice } from '@/lib/flights';
+import SiteHeader from '@/components/SiteHeader';
 
 const TZ = 'America/Argentina/Buenos_Aires';
 const FLIGHT_PAGE_SIZE = 20;
@@ -24,17 +23,6 @@ const FLEET_IMG =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCLDPhxkwdDvpLHuGzES1myvcdH258uoB2RRlHnZFL3B7dQqE0xT7sbyFIng7ClMZ-yqFZIU0yIy7gAhjYnUbKF8wrWFEwWGczPInNzM_Y6fzxH2vTHA1q7e7eBDb-DaZA7IVnuNQ_XMnOZOOz5bznlTseZved6oT30VJkdCMly2qQwMPEPaPsM4N0OvFbwmzuMtXwW20Qn--T1QbkDKjsSqqRqeVXJr-7FcjUmEs0caK4iJgQeCX_F';
 const CABIN_IMG =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuC4ybXDxZWCT78pC3wAMS73Ak287xKNdmQbw8MVEfdsDQ7CBUupAKb0Y_xReJTdTLOuN86EZr8bM4l0F70g7hlxPz2Ys7HrIonCOyowsohbuqtISnkFDVJXjuOK9tvH4Dz_Nwn8IGAVx2kJzXofHANEbODisVrHVv59722gYufGZY0cZEqhvrGnq6WBgAygX-eXIFbxqXQkefS396NJQdsj4uyA75UDj-vZ6cUfUeb-4EVK6d48pVw5';
-
-function Logo() {
-  return (
-    <div className="w-9 h-9 rounded-xl bg-primary ring-1 ring-white/10 flex items-center justify-center shrink-0">
-      <svg className="w-6 h-6 text-[#E11D48]" fill="none" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-        <path d="M9 20.5L25.5 12L21 21.5L29 27L24 28L18 24.5L14 28.5L13.5 24L9 20.5Z" fill="currentColor" />
-        <circle cx="28.5" cy="13.5" fill="#f43f5e" r="2.8" />
-      </svg>
-    </div>
-  );
-}
 
 /** Mismo formato de importes que el HTML original ("$64.200" + etiqueta ARS). */
 const MONEY = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 });
@@ -64,6 +52,7 @@ const STEPS: { n: number; label: string; icon?: string; state: 'active' | 'upcom
   { n: 4, label: '4. Confirmación', state: 'ghost' },
 ];
 
+<<<<<<< HEAD
 /**
  * Secciones del menu que todavia no tienen pantalla propia. Antes eran `<a href="#">`,
  * que al hacer clic solo llevaban al tope de la pagina sin explicar nada; ahora
@@ -77,6 +66,8 @@ const PENDING_SECTIONS: { path: string; label: string; short: string }[] = [
 /** Acceso al panel, visible solo para cuentas con permisos de administrador. */
 const ADMIN_SECTION = { href: '/admin', label: 'Ir a la pantalla de admin', short: 'Ir a admin' };
 
+=======
+>>>>>>> SofiBrianAnge
 type Selection = { flightId: string; fareId: string };
 
 type ApiEnvelope<T> = { ok: true; data: T } | { ok: false; error: { message: string } };
@@ -94,8 +85,6 @@ const cheapestIndex = (prices: SerializedPrice[]) =>
   prices.reduce((best, p, i) => (p.price < prices[best]!.price ? i : best), 0);
 
 export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap }) {
-  const router = useRouter();
-  const { signOut } = useClerk();
   const [tripType, setTripType] = useState<'ROUND_TRIP' | 'ONE_WAY'>('ROUND_TRIP');
   const [origin, setOrigin] = useState(bootstrap.initialQuery.origin);
   const [destination, setDestination] = useState(bootstrap.initialQuery.destination);
@@ -133,7 +122,6 @@ export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [clock, setClock] = useState('--:--:--');
   // Solo ofrece destinos que tienen ruta desde el origen elegido
   const destinations = useMemo(() => {
     const valid = new Set(
@@ -148,23 +136,6 @@ export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap
     const id = setTimeout(() => setNotice(null), 5000);
     return () => clearTimeout(id);
   }, [notice]);
-
-  // Hora oficial ART en vivo (reemplaza el texto estatico del HTML original).
-  useEffect(() => {
-    const tick = () =>
-      setClock(
-        new Intl.DateTimeFormat('es-AR', {
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: false,
-          timeZone: TZ,
-        }).format(new Date()),
-      );
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, []);
 
   const week = useMemo(() => localWeekDays(date), [date]);
   const fareByDate = useMemo(
@@ -257,12 +228,6 @@ if (slotDef.to) flightQuery.set('timeTo', slotDef.to);
   }
 }
 
-  async function logout() {
-     await signOut({ redirectUrl: '/login' });
-
-    router.refresh();
-  }
-
   const cheapestDay = useMemo(() => {
     let best: { date: string; price: number } | null = null;
     for (const w of weeklyFares) {
@@ -273,6 +238,7 @@ if (slotDef.to) flightQuery.set('timeTo', slotDef.to);
 
   return (
     <>
+<<<<<<< HEAD
       <header className="fixed top-0 left-0 w-full z-50 bg-primary-container shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
         <div className="min-h-20 w-full px-4 sm:px-space-lg lg:px-margin py-3 lg:py-0 flex flex-wrap items-center justify-between gap-space-sm lg:gap-space-md">
           <div className="flex items-center gap-space-md min-w-0 shrink-0">
@@ -451,6 +417,9 @@ if (slotDef.to) flightQuery.set('timeTo', slotDef.to);
           </div>
         </div>
       )}
+=======
+      <SiteHeader activePath="vuelos" onNotice={setNotice} user={bootstrap.user} />
+>>>>>>> SofiBrianAnge
 
       <main className="w-full pt-32 lg:pt-20 bg-surface min-h-[calc(100vh-140px)]">
         <div className="flex flex-col w-full">
