@@ -1,18 +1,11 @@
-import { getCurrentUser, toSiteHeaderUser } from '@/lib/auth';
-import SiteHeader from '@/components/SiteHeader';
+import { requireAdminPage } from '../require-admin';
 import AdminReservasClient from './admin-reservas-client';
 
 export const dynamic = 'force-dynamic';
 
+/** Consola interna de busqueda y gestion de reservas (US-14C / RF-14). */
 export default async function AdminReservasPage() {
-  const user = await getCurrentUser();
+  await requireAdminPage({ allowMostrador: true });
 
-  return (
-    <>
-      <SiteHeader activePath="vuelos" user={toSiteHeaderUser(user)} />
-      <div className="pt-32 lg:pt-20">
-        <AdminReservasClient user={toSiteHeaderUser(user)} />
-      </div>
-    </>
-  );
+  return <AdminReservasClient />;
 }

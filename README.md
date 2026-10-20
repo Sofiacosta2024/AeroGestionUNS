@@ -37,6 +37,7 @@ La aplicación queda en `http://localhost:3000`:
 - `/vuelos` — motor de búsqueda de vuelos (diseño de `vuelos.html`).
 - `/admin/vuelos/nuevo` — alta y publicación de vuelos (RF-01, solo `ADMIN`).
 - `/admin/itinerario` — planilla del día y borradores pendientes (RF-01, solo `ADMIN`).
+- `/admin/reservas` — búsqueda y gestión interna de reservas (US-14C, `ADMIN` y `MOSTRADOR`).
 - `/` — redirige a `/vuelos` si hay sesión, a `/login` si no.
 
 ### Variables de entorno

@@ -455,6 +455,23 @@ export const bookingPassengerAdminUpdateSchema = z
     message: 'No hay campos para actualizar',
   });
 
+/**
+ * US-14C: edicion de los datos de identificacion de un pasajero desde la consola
+ * admin/mostrador. Apropos no incluye passengerId ni seatId: desde esta pantalla
+ * solo se corrigen datos nominales, nunca la vinculacion ni el asiento.
+ */
+export const bookingPassengerIdentUpdateSchema = z
+  .object({
+    firstName: required(80).optional(),
+    lastName: required(80).optional(),
+    documentType: documentTypeEnum.optional(),
+    documentNumber: required(32).optional(),
+    birthDate: dateIso.optional().nullable(),
+  })
+  .refine((d) => Object.keys(d).length > 0, {
+    message: 'No hay campos para actualizar',
+  });
+
 export const bookingPassengerSchema = z.object({
   passengerId: z.string().cuid().optional().nullable(),
   firstName: required(80),

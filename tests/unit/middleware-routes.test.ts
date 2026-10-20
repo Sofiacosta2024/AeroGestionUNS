@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isPublic, isAdmin, isMostrador } from '../../src/middleware';
+import { isPublic, isAdmin, isMostrador, isReservasConsole } from '../../src/middleware';
 
 /**
  * Rutas publicas y protegidas (US-14A). `createRouteMatcher` solo lee
@@ -87,4 +87,27 @@ test('isMostrador: solo rutas de mostrador', () => {
   assert.equal(isMostrador(req('/admin')), false);
   assert.equal(isMostrador(req('/')), false);
   assert.equal(isMostrador(req('/api/v1/reservas/consulta')), false);
+});
+
+// ---------------------------------------------------------------------------
+// US-14C: la consola de reservas es la unica ruta admin abierta a MOSTRADOR
+// ---------------------------------------------------------------------------
+
+test('isReservasConsole: pagina y APIs internas de la consola de reservas', () => {
+  assert.equal(isReservasConsole(req('/admin/reservas')), true);
+  assert.equal(isReservasConsole(req('/admin/reservas/AG-7F3K9Q')), true);
+  assert.equal(isReservasConsole(req('/api/v1/admin/reservas')), true);
+  assert.equal(isReservasConsole(req('/api/v1/admin/reservas/AG-7F3K9Q/historial')), true);
+  assert.equal(
+    isReservasConsole(req('/api/v1/admin/reservas/AG-7F3K9Q/pasajeros/bp_1')),
+    true,
+  );
+});
+
+test('isReservasConsole: el resto del panel admin sigue siendo exclusivo de ADMIN', () => {
+  assert.equal(isReservasConsole(req('/admin')), false);
+  assert.equal(isReservasConsole(req('/admin/itinerario')), false);
+  assert.equal(isReservasConsole(req('/admin/vuelos/nuevo')), false);
+  assert.equal(isReservasConsole(req('/api/v1/reservas/consulta')), false);
+  assert.equal(isReservasConsole(req('/vuelos')), false);
 });

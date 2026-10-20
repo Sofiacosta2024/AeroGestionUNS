@@ -294,6 +294,19 @@ El servidor resuelve cada precio desde `flight_fares`, descuenta un asiento por 
 dentro de una transacción (con `updateMany` condicional para no sobrevender ante
 concurrencia) y calcula `totalAmount`.
 
+## Consola de reservas (US-14C / RF-14)
+
+Único bloque `/admin` abierto a `MOSTRADOR` además de `ADMIN` (el resto del panel sigue
+siendo exclusivo de `ADMIN`). Cualquier otro rol recibe `403`.
+
+| Método | Ruta | Rol | Descripción |
+| --- | --- | --- | --- |
+| `GET` | `/api/v1/admin/reservas?bookingCode=&documentNumber=&lastName=&flightCode=` | `MOSTRADOR` | Búsqueda multicriterio (exige al menos un criterio). Responde `{ data: { data, pagination } }`. |
+| `GET` | `/api/v1/admin/reservas/:bookingCode` | `MOSTRADOR` | Detalle completo: pasajeros, vuelos y contacto. |
+| `GET` | `/api/v1/admin/reservas/:bookingCode/historial` | `MOSTRADOR` | Últimos 20 eventos de auditoría de la reserva. |
+| `GET` | `/api/v1/admin/reservas/:bookingCode/comprobantes?type=PASAJE\|FACTURA` | `MOSTRADOR` | Re-emisión manual del comprobante en PDF. |
+| `PATCH` | `/api/v1/admin/reservas/:bookingCode/pasajeros/:passengerId` | `MOSTRADOR` | Edición de los datos de identificación del pasajero (nombre, apellido, tipo/número de documento, fecha de nacimiento). `passengerId` es el registro dentro de la reserva (`BookingPassenger`). Deja traza en auditoría (`PASSENGER_IDENT_UPDATED`). |
+
 ## Administración
 
 | Método | Ruta | Rol | Descripción |

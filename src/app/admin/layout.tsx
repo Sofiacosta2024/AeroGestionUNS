@@ -12,12 +12,14 @@ export const dynamic = 'force-dynamic';
  * comparte esos tokens. Es simple a proposito para que RF-07 lo pueda reemplazar.
  */
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const user = await requireAdminPage();
+  // allowMostrador (US-14C): /admin/reservas esta habilitado para MOSTRADOR. El resto
+  // de las paginas del panel se protege en su propio guard con ADMIN.
+  const user = await requireAdminPage({ allowMostrador: true });
   const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
 
   return (
     <div className="theme-vuelos bg-surface font-body-md text-on-surface antialiased min-h-screen">
-      <AdminHeader userName={userName} />
+      <AdminHeader userName={userName} role={user.role} />
       <main className="w-full pt-32 lg:pt-20 pb-space-xl">{children}</main>
     </div>
   );

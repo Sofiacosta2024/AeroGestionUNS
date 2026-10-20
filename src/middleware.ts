@@ -27,11 +27,17 @@ const isAdmin = createRouteMatcher([
   '/api/v1/admin(.*)',
 ]);
 const isMostrador = createRouteMatcher(['/mostrador(.*)', '/api/mostrador(.*)']);
+// US-14C: la consola de busqueda y gestion de reservas acepta MOSTRADOR ademas de ADMIN
+// (paginas y APIs internas). El resto del panel sigue siendo exclusivo de ADMIN.
+const isReservasConsole = createRouteMatcher([
+  '/admin/reservas(.*)',
+  '/api/v1/admin/reservas(.*)',
+]);
 
 // Exportados solo para las pruebas de rutas (US-14A): permiten verificar que
 // las rutas publicas y protegidas se comportan como se espera sin arrancar
 // el servidor ni Clerk.
-export { isPublic, isAdmin, isMostrador };
+export { isPublic, isAdmin, isMostrador, isReservasConsole };
 
 
 export default clerkMiddleware(async (auth, req) => {
@@ -43,7 +49,11 @@ export default clerkMiddleware(async (auth, req) => {
   const role = sessionClaims?.metadata?.role ?? 'PASAJERO';
 
   if (isAdmin(req) && role !== 'ADMIN') {
-    return NextResponse.redirect(new URL('/', req.url));
+    // US-14C: la unica excepcion a ADMIN es la consola de reservas para MOSTRADOR.
+    const isReservasForMostrador = role === 'MOSTRADOR' && isReservasConsole(req);
+    if (!isReservasForMostrador) {
+      return NextResponse.redirect(new URL('/', req.url));
+    }
   }
   if (isMostrador(req) && role !== 'MOSTRADOR' && role !== 'ADMIN') {
     return NextResponse.redirect(new URL('/', req.url));

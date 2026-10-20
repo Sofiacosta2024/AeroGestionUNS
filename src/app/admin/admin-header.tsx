@@ -7,6 +7,7 @@ import { useClerk } from '@clerk/nextjs';
 const LINKS = [
   { href: '/admin/vuelos/nuevo', label: 'Alta de vuelos' },
   { href: '/admin/itinerario', label: 'Planilla del día' },
+  { href: '/admin/reservas', label: 'Gestión de reservas' },
   { href: '/vuelos', label: 'Volver a los vuelos' },
 ] as const;
 
@@ -15,7 +16,7 @@ const LINK_ACTIVE = `${LINK_BASE} bg-secondary text-on-secondary shadow-[0_1px_8
 const LINK_IDLE = `${LINK_BASE} text-primary-fixed-dim hover:bg-primary hover:text-on-primary`;
 
 /** Header del panel de administracion: marca, navegacion y cierre de sesion. */
-export default function AdminHeader({ userName }: { userName: string }) {
+export default function AdminHeader({ userName, role = 'ADMIN' }: { userName: string; role?: string }) {
   const pathname = usePathname();
   const { signOut } = useClerk();
 
@@ -69,7 +70,7 @@ export default function AdminHeader({ userName }: { userName: string }) {
               {userName}
             </span>
             <span className="font-label-sm text-[11px] text-secondary-fixed leading-none">
-              Administrador
+              {role === 'MOSTRADOR' ? 'Mostrador' : 'Administrador'}
             </span>
           </div>
           <button
