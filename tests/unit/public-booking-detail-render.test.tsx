@@ -109,6 +109,46 @@ test('detalle: pasaje y factura habilitados para descargar', () => {
   assert.doesNotMatch(buttonFor('Descargar Factura PDF'), /\sdisabled=""/, 'el boton de factura debe estar habilitado');
 });
 
+test('reprogramacion: muestra el boton con check-in abierto y en la fila de PDFs', () => {
+  const booking = sampleBooking({
+    flights: [
+      {
+        ...sampleBooking().flights[0]!,
+        departureAt: '2099-11-18T09:45:00.000Z',
+        arrivalAt: '2099-11-18T10:55:00.000Z',
+      },
+    ],
+    passengers: sampleBooking().passengers.map((passenger) => ({
+      ...passenger,
+      checkInStatus: 'OPEN',
+    })),
+  });
+  const html = render(booking);
+
+  assert.match(html, /Reprogramar vuelo/);
+  assert.match(html, /grid grid-cols-1 gap-3 border-t border-outline-variant\/60 pt-4 sm:grid-cols-3/);
+  assert.ok(html.indexOf('Reprogramar vuelo') < html.indexOf('Descargar Pasaje PDF'));
+  assert.ok(html.indexOf('Reprogramar vuelo') < html.indexOf('Descargar Factura PDF'));
+});
+
+test('reprogramacion: oculta el boton si el check-in está completado', () => {
+  const booking = sampleBooking({
+    flights: [
+      {
+        ...sampleBooking().flights[0]!,
+        departureAt: '2099-11-18T09:45:00.000Z',
+        arrivalAt: '2099-11-18T10:55:00.000Z',
+      },
+    ],
+    passengers: sampleBooking().passengers.map((passenger) => ({
+      ...passenger,
+      checkInStatus: 'DONE',
+    })),
+  });
+
+  assert.doesNotMatch(render(booking), /Reprogramar vuelo/);
+});
+
 test('detalle: sin apellido utilizable ambas descargas quedan deshabilitadas', () => {
   const html = render(
     sampleBooking({

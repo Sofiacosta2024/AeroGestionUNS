@@ -255,6 +255,19 @@ responde `409`. Los conflictos vuelven en `error.details` con `kind`
 | `POST` | `/api/bookings/:code/boarding-passes` | `MOSTRADOR` | Emisión del pase. |
 | `GET` | `/api/bookings/:code/payments` | dueño o `MOSTRADOR` | Pagos de la reserva. |
 | `POST` | `/api/bookings/:code/payments` | dueño o `MOSTRADOR` | Registrar pago. |
+| `POST` | `/api/v1/reservas/consulta/reprogramar` | público con código + apellido | Busca alternativas o confirma el cambio de un tramo reservado. |
+
+`POST /api/v1/reservas/consulta/reprogramar` acepta `action: "search"` con
+`flightCode` y `date` (`YYYY-MM-DD`, posterior al día actual en ART), o
+`action: "confirm"` con `flightCode`, `replacementFlightId`, `replacementFareId` y,
+si la tarifa incluye selección de asiento, un `seatIds` por pasajero. Ambas acciones
+requieren el código y apellido de un pasajero. La confirmación vuelve a comprobar
+la ruta, cabina, disponibilidad y asientos dentro de una transacción serializable;
+un cupo agotado responde `409`. Se conserva el precio abonado.
+
+La reprogramación autónoma actualmente admite reservas con un solo tramo y check-in
+no completado; las reservas ida y vuelta se rechazan sin modificarse porque el modelo
+actual de pasajeros conserva un asiento por reserva, no por tramo.
 
 `GET /api/bookings/:code`, y los subrecursos marcados "dueño o `MOSTRADOR`", validan que
 el usuario sea el dueño de la reserva o pertenezca a Operations (`assertCanAccess`).

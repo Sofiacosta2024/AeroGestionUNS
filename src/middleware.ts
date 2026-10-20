@@ -16,6 +16,7 @@ const isPublic = createRouteMatcher([
   '/api/v1/reservas/consulta',
   '/api/v1/reservas/consulta/pasaje',
   '/api/v1/reservas/consulta/factura',
+  '/api/v1/reservas/consulta/reprogramar',
   '/api/webhooks(.*)',
   '/api/flights(.*)',
   '/api/bookings(.*)',

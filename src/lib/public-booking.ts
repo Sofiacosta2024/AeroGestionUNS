@@ -33,7 +33,7 @@ const publicBookingInclude = {
       fare: true,
     },
   },
-  passengers: { include: { seat: true } },
+  passengers: { include: { seat: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
 } satisfies Prisma.BookingInclude;
 
 export type PublicBookingRecord = Prisma.BookingGetPayload<{
@@ -59,7 +59,7 @@ export type PublicBookingView = {
     status: string;
     isReturn: boolean;
     price: number;
-    fare: { name: string; cabinClass: string };
+    fare: { name: string; cabinClass: string; seatSelection: boolean };
   }>;
   passengers: Array<{
     firstName: string;
@@ -98,7 +98,11 @@ export function toPublicBookingView(booking: PublicBookingRecord): PublicBooking
       status: bf.flight.status,
       isReturn: bf.isReturn,
       price: Number(bf.price),
-      fare: { name: bf.fare.name, cabinClass: bf.fare.cabinClass },
+      fare: {
+        name: bf.fare.name,
+        cabinClass: bf.fare.cabinClass,
+        seatSelection: bf.seatSelectionIncluded || bf.fare.seatSelection,
+      },
     })),
     passengers: booking.passengers.map((p) => ({
       firstName: p.firstName,

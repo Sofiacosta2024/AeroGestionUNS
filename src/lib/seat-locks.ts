@@ -380,6 +380,7 @@ export async function lockSeatsAtomic(
               flightId,
               fareId,
               price: flightFare.price,
+              seatSelectionIncluded: fareModel.seatSelection,
               departureAt: flight.departureAt,
             },
           ],

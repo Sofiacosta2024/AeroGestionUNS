@@ -172,6 +172,7 @@ test('consulta exitosa: 200 con codigo normalizado y reserva encontrada', async 
   assert.equal(json.data.status, 'CONFIRMED');
   assert.equal(json.data.totalAmount, 64200);
   assert.equal(json.data.flights[0].flightCode, 'AG-1420');
+  assert.equal(json.data.flights[0].fare.seatSelection, false);
   assert.equal(json.data.passengers[0].seatNumber, '12A');
 });
 

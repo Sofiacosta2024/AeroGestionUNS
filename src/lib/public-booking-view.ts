@@ -41,7 +41,7 @@ export type PublicBookingView = {
     status: string;
     isReturn: boolean;
     price: number;
-    fare: { name: string; cabinClass: string } | null;
+    fare: { name: string; cabinClass: string; seatSelection?: boolean } | null;
   }>;
   passengers: Array<{
     firstName: string;

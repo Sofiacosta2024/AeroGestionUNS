@@ -583,3 +583,27 @@ export const bookingPublicLookupSchema = z.object({
     )
     .refine((v) => countLetters(v) >= 2, 'El apellido debe tener al menos 2 letras'),
 });
+
+const rebookingFlightCode = z.string().trim().min(1).max(10).transform((value) => value.toUpperCase());
+
+export const bookingReprogramSearchSchema = bookingPublicLookupSchema.extend({
+  action: z.literal('search'),
+  flightCode: rebookingFlightCode,
+  date: calendarDate,
+});
+
+export const bookingReprogramConfirmSchema = bookingPublicLookupSchema.extend({
+  action: z.literal('confirm'),
+  flightCode: rebookingFlightCode,
+  replacementFlightId: z.string().cuid(),
+  replacementFareId: z.string().cuid(),
+  seatIds: z.array(z.string().cuid()).max(9).default([]).refine(
+    (seatIds) => new Set(seatIds).size === seatIds.length,
+    'No se pueden seleccionar asientos duplicados',
+  ),
+});
+
+export const bookingReprogramSchema = z.discriminatedUnion('action', [
+  bookingReprogramSearchSchema,
+  bookingReprogramConfirmSchema,
+]);

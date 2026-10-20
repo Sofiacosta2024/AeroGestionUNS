@@ -514,6 +514,7 @@ model BookingFlight {
   fare         Fare    @relation(fields: [fareId], references: [id], onDelete: Restrict)
   /// Copia del precio pactada al momento de reservar
   price        Decimal @db.Decimal(12, 2)
+  seatSelectionIncluded Boolean @default(false) @map("seat_selection_included")
   isReturn     Boolean @default(false) @map("is_return")
   departureAt  DateTime @map("departure_at") @db.Timestamptz(3)
 

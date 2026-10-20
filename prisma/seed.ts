@@ -553,32 +553,69 @@ console.log(`  ${weeklyRows.length} tarifas semanales (calendario)`);
     console.log('  1 reserva de ejemplo (AG-DEMO01)');
   }
 
-  // La reserva se creo sin butaca para el segundo pasajero en versiones previas
-  // del seed: se completa para que la demo sea coherente (2 pasajeros, 2 butacas).
+  // Mantiene la reserva demo elegible y apuntando a un vuelo futuro en cada seed.
   const demo = await prisma.booking.findUnique({
     where: { bookingCode: 'AG-DEMO01' },
-    include: { passengers: true },
+    include: { flights: { orderBy: { departureAt: 'asc' } }, passengers: { include: { boardingPass: true } } },
   });
   if (demo) {
     const seats = [seat1420, seat1420b];
-    for (const [i, bp] of demo.passengers.entries()) {
-      if (bp.seatId || !seats[i]) continue;
-      await prisma.bookingPassenger.update({
-        where: { id: bp.id },
-        data: { seatId: seats[i].id, checkInCode: 'CK7F3K9R', checkInStatus: 'OPEN' },
-      });
-      await prisma.boardingPass.upsert({
-        where: { bookingPassengerId: bp.id },
-        update: { seatId: seats[i].id },
-        create: {
-          code: 'BP-7F3K9Q-MF',
-          bookingPassengerId: bp.id,
-          seatId: seats[i].id,
-          flightCode: demoFlight.code,
+    await prisma.$transaction(async (tx) => {
+      const [primaryLeg, ...extraLegs] = demo.flights;
+      if (primaryLeg) {
+        await tx.bookingFlight.update({
+          where: { id: primaryLeg.id },
+          data: {
+            flightId: demoFlight.id,
+            fareId: econFlex.id,
+            price: 64200,
+            seatSelectionIncluded: econFlex.seatSelection,
+            isReturn: false,
+            departureAt: demoFlight.departureAt,
+          },
+        });
+      } else {
+        await tx.bookingFlight.create({
+          data: {
+            bookingId: demo.id,
+            flightId: demoFlight.id,
+            fareId: econFlex.id,
+            price: 64200,
+            seatSelectionIncluded: econFlex.seatSelection,
+            isReturn: false,
+            departureAt: demoFlight.departureAt,
+          },
+        });
+      }
+      if (extraLegs.length > 0) {
+        await tx.bookingFlight.deleteMany({ where: { id: { in: extraLegs.map((leg) => leg.id) } } });
+      }
+      await tx.booking.update({
+        where: { id: demo.id },
+        data: {
+          status: BookingStatus.CONFIRMED,
+          tripType: TripType.ONE_WAY,
+          cabinClass: CabinClass.ECONOMY,
+          totalAmount: 64200 * demo.passengersCount,
         },
       });
-      console.log('  reserva de ejemplo: butaca y pase completados');
-    }
+
+      for (const [i, bp] of demo.passengers.entries()) {
+        const seat = seats[i];
+        if (!seat) continue;
+        await tx.bookingPassenger.update({
+          where: { id: bp.id },
+          data: { seatId: seat.id, checkInStatus: 'OPEN' },
+        });
+        if (bp.boardingPass) {
+          await tx.boardingPass.update({
+            where: { id: bp.boardingPass.id },
+            data: { seatId: seat.id, flightCode: demoFlight.code, status: 'ISSUED' },
+          });
+        }
+      }
+    });
+
   }
 
   console.log('> Seed completado');

@@ -72,7 +72,7 @@ export const POST = handler(async (req: Request) => {
 
   const flights = await prisma.flight.findMany({
     where: { id: { in: body.flights.map((f) => f.flightId) } },
-    include: { fares: { where: { fareId: { in: fareIds } } } },
+    include: { fares: { where: { fareId: { in: fareIds } }, include: { fare: true } } },
   });
 
   if (flights.length !== body.flights.length) {
@@ -97,6 +97,7 @@ export const POST = handler(async (req: Request) => {
       flight,
       fareId: requested.fareId,
       price: flightFare.price,
+      seatSelectionIncluded: flightFare.fare.seatSelection,
       isReturn: requested.isReturn,
     };
   });
@@ -131,6 +132,7 @@ export const POST = handler(async (req: Request) => {
             flightId: i.flight.id,
             fareId: i.fareId,
             price: i.price,
+            seatSelectionIncluded: i.seatSelectionIncluded,
             isReturn: i.isReturn,
             departureAt: i.flight.departureAt,
           })),

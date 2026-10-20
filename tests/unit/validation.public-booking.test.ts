@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  bookingReprogramSchema,
   bookingPublicLookupSchema,
   normalizeBookingCode,
   normalizeLastName,
@@ -167,4 +168,36 @@ test('invalido: tipos inesperados (objeto en apellido)', () => {
 
 test('invalido: entrada nula', () => {
   expectInvalid(null);
+});
+
+test('reprogramacion: acepta una busqueda con fecha futura y vuelo normalizado', () => {
+  const result = bookingReprogramSchema.safeParse({
+    action: 'search',
+    code: '7f3k9q',
+    lastName: 'García',
+    flightCode: 'ag-1420',
+    date: '2027-01-15',
+  });
+  assert.equal(result.success, true);
+  if (result.success) {
+    assert.equal(result.data.code, 'AG-7F3K9Q');
+    assert.equal(result.data.flightCode, 'AG-1420');
+  }
+});
+
+test('reprogramacion: acepta confirmacion con vuelo y tarifa de reemplazo', () => {
+  const result = bookingReprogramSchema.safeParse({
+    action: 'confirm',
+    code: 'AG-7F3K9Q',
+    lastName: 'García',
+    flightCode: 'AG-1420',
+    replacementFlightId: 'c123456789012345678901234',
+    replacementFareId: 'c123456789012345678901235',
+  });
+  assert.equal(result.success, true);
+});
+
+test('reprogramacion: rechaza acciones y fecha invalida', () => {
+  assert.equal(bookingReprogramSchema.safeParse({ action: 'search', code: 'AG-7F3K9Q', lastName: 'García', flightCode: 'AG-1420', date: '2026-02-31' }).success, false);
+  assert.equal(bookingReprogramSchema.safeParse({ action: 'confirm', code: 'AG-7F3K9Q', lastName: 'García', flightCode: 'AG-1420', replacementFlightId: 'bad', replacementFareId: 'bad' }).success, false);
 });

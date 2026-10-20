@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import React, { useState, type FormEvent } from 'react';
 import { bookingPublicLookupSchema } from '@/lib/validation';
-import { formatArs } from '@/lib/format';
+import { formatArs, formatDayMonth, formatTime } from '@/lib/format';
 import {
   bookingStatusPresentation,
   cabinClassLabel,
@@ -317,7 +317,7 @@ export default function ConsultaClient() {
           </div>
         </section>
 
-        {result && <ReservaDetalle booking={result} />}
+        {result && <ReservaDetalle booking={result} onReprogrammed={setResult} />}
       </div>
     </main>
   );
@@ -439,9 +439,22 @@ async function downloadDocumentPdf(
  * se genera cuando existe un pago aprobado real; si no, el servidor responde
  * 409 y se muestra su mensaje honesto.
  */
-export function ReservaDetalle({ booking }: { booking: PublicBookingView }) {
+export function ReservaDetalle({
+  booking,
+  onReprogrammed = () => undefined,
+}: {
+  booking: PublicBookingView;
+  onReprogrammed: (booking: PublicBookingView) => void;
+}) {
   const [downloading, setDownloading] = useState<DocumentKind | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [rebookingOpen, setRebookingOpen] = useState(false);
+  const [rebookingDate, setRebookingDate] = useState(tomorrowInArgentina());
+  const [rebookingFlights, setRebookingFlights] = useState<RebookingFlight[]>([]);
+  const [selectedRebooking, setSelectedRebooking] = useState<string | null>(null);
+  const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>([]);
+  const [rebookingLoading, setRebookingLoading] = useState(false);
+  const [rebookingError, setRebookingError] = useState<string | null>(null);
 
   // Cualquier apellido de la reserva autoriza la descarga: el endpoint exige
   // que el apellido pertenezca a un pasajero de esa misma reserva.
@@ -451,6 +464,102 @@ export function ReservaDetalle({ booking }: { booking: PublicBookingView }) {
   const status = bookingStatusPresentation(booking.status);
   const cabin = cabinClassLabel(booking.cabinClass || booking.flights[0]?.fare?.cabinClass);
   const passengerCount = booking.passengersCount ?? booking.passengers.length;
+  const currentFlight = booking.flights[0];
+  const preservedSeat = Boolean(currentFlight?.fare?.seatSelection);
+  const canRebook = Boolean(
+    currentFlight &&
+    booking.flights.length === 1 &&
+    ['CONFIRMED', 'PAID'].includes(booking.status) &&
+    currentFlight.status !== 'CANCELLED' &&
+    currentFlight.status !== 'DEPARTED' &&
+    currentFlight.status !== 'ARRIVED' &&
+    currentFlight.departureAt &&
+    new Date(currentFlight.departureAt) > new Date() &&
+    booking.passengers.every((passenger) => passenger.checkInStatus !== 'DONE'),
+  );
+
+  async function searchRebookingFlights() {
+    if (!currentFlight || !lookupLastName || rebookingLoading) return;
+    setRebookingLoading(true);
+    setRebookingError(null);
+    setRebookingFlights([]);
+    setSelectedRebooking(null);
+    setSelectedSeatIds([]);
+    try {
+      const response = await fetch('/api/v1/reservas/consulta/reprogramar', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          action: 'search',
+          code: booking.bookingCode,
+          lastName: lookupLastName,
+          flightCode: currentFlight.flightCode,
+          date: rebookingDate,
+        }),
+      });
+      const body = (await response.json().catch(() => null)) as RebookingSearchResponse | RebookingErrorResponse | null;
+      if (!response.ok || !body || body.ok !== true) {
+        setRebookingError(body?.ok === false ? body.error.message : 'No se pudo buscar vuelos disponibles. Intente nuevamente.');
+        return;
+      }
+      setRebookingFlights(body.data.data);
+      if (body.data.data.length === 0) {
+        setRebookingError('No hay vuelos disponibles para esa fecha en la misma clase.');
+      }
+    } catch {
+      setRebookingError('No se pudo conectar con el servicio de reprogramación. Intente nuevamente.');
+    } finally {
+      setRebookingLoading(false);
+    }
+  }
+
+  async function confirmRebooking() {
+    if (!currentFlight || !selectedRebooking || !lookupLastName || rebookingLoading) return;
+    const [replacementFlightId, replacementFareId] = selectedRebooking.split(':');
+    if (!replacementFlightId || !replacementFareId) return;
+
+    setRebookingLoading(true);
+    setRebookingError(null);
+    try {
+      const response = await fetch('/api/v1/reservas/consulta/reprogramar', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          action: 'confirm',
+          code: booking.bookingCode,
+          lastName: lookupLastName,
+          flightCode: currentFlight.flightCode,
+          replacementFlightId,
+          replacementFareId,
+          seatIds: selectedSeatIds,
+        }),
+      });
+      const body = (await response.json().catch(() => null)) as RebookingConfirmResponse | RebookingErrorResponse | null;
+      if (!response.ok || !body || body.ok !== true) {
+        setSelectedRebooking(null);
+        setSelectedSeatIds([]);
+        setRebookingFlights((flights) => flights
+          .map((flight) => ({
+            ...flight,
+            fares: flight.fares.filter((fare) => `${flight.id}:${fare.id}` !== selectedRebooking),
+          }))
+          .filter((flight) => flight.fares.length > 0));
+        setRebookingError(body?.ok === false ? body.error.message : 'No se pudo confirmar el cambio. Busque otra alternativa.');
+        return;
+      }
+
+      onReprogrammed(body.data.booking);
+      setRebookingOpen(false);
+      setRebookingFlights([]);
+      setSelectedSeatIds([]);
+      const pdf = await downloadDocumentPdf('pasaje', booking.bookingCode, lookupLastName);
+      if (!pdf.ok) setDownloadError(pdf.message);
+    } catch {
+      setRebookingError('No se pudo conectar con el servicio de reprogramación. Intente nuevamente.');
+    } finally {
+      setRebookingLoading(false);
+    }
+  }
 
   async function onDownload(kind: DocumentKind) {
     // Evita descargas multiples mientras una sigue en curso.
@@ -586,7 +695,21 @@ export function ReservaDetalle({ booking }: { booking: PublicBookingView }) {
         La factura solo se genera con un pago aprobado real; nunca se simula
         una descarga ni una emision inexistente.
       */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-outline-variant/60 pt-4">
+      <div className={`grid grid-cols-1 gap-3 border-t border-outline-variant/60 pt-4 ${canRebook ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
+        {canRebook && (
+          <button
+            className="h-11 w-full px-4 rounded-lg bg-primary-container text-on-primary font-label-lg text-label-lg font-bold flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+            disabled={downloading !== null || rebookingLoading}
+            onClick={() => {
+              setRebookingError(null);
+              setRebookingOpen(true);
+            }}
+            type="button"
+          >
+            <span aria-hidden="true" className="material-symbols-outlined">event_repeat</span>
+            Reprogramar vuelo
+          </button>
+        )}
         <button
           aria-describedby="pdf-pasaje-note"
           className="h-11 px-4 rounded-lg bg-secondary text-on-secondary font-label-lg text-label-lg font-bold flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
@@ -647,6 +770,232 @@ export function ReservaDetalle({ booking }: { booking: PublicBookingView }) {
         La descarga de la factura en PDF usa el código y apellido de la consulta; requiere un pago
         aprobado.
       </p>
+      {rebookingOpen && currentFlight && (
+        <RebookingModal
+          cabin={cabin}
+          date={rebookingDate}
+          error={rebookingError}
+          flights={rebookingFlights}
+          loading={rebookingLoading}
+          onCancel={() => setRebookingOpen(false)}
+          onConfirm={confirmRebooking}
+          onDateChange={(next) => {
+            setRebookingDate(next);
+            setRebookingFlights([]);
+            setSelectedRebooking(null);
+            setSelectedSeatIds([]);
+            setRebookingError(null);
+          }}
+          onSearch={searchRebookingFlights}
+          onSelect={(key) => {
+            const [flightId] = key.split(':');
+            const candidate = rebookingFlights.find((flight) => flight.id === flightId);
+            setSelectedRebooking(key);
+            if (!preservedSeat || !candidate) {
+              setSelectedSeatIds([]);
+              return;
+            }
+            const seatsByLabel = new Map(candidate.availableSeats.map((seat) => [seat.label, seat.id]));
+            const used = new Set<string>();
+            const defaults = booking.passengers.map((passenger) => {
+              const matching = passenger.seatNumber ? seatsByLabel.get(passenger.seatNumber) : undefined;
+              const seatId = matching && !used.has(matching)
+                ? matching
+                : candidate.availableSeats.find((seat) => !used.has(seat.id))?.id;
+              if (seatId) used.add(seatId);
+              return seatId ?? '';
+            });
+            setSelectedSeatIds(defaults);
+          }}
+          onSeatChange={(index, seatId) => setSelectedSeatIds((previous) => previous.map((value, i) => i === index ? seatId : value))}
+          passengerCount={passengerCount}
+          passengers={booking.passengers}
+          preservedSeat={preservedSeat}
+          selected={selectedRebooking}
+          selectedSeatIds={selectedSeatIds}
+          route={`${currentFlight.origin?.iataCode ?? '—'} → ${currentFlight.destination?.iataCode ?? '—'}`}
+        />
+      )}
     </section>
+  );
+}
+
+type RebookingFare = { id: string; name: string; cabinClass: string; price: number; seatsAvailable: number };
+type RebookingFlight = {
+  id: string;
+  code: string;
+  departureAt: string;
+  arrivalAt: string;
+  origin: { iataCode: string; city: string };
+  destination: { iataCode: string; city: string };
+  fares: RebookingFare[];
+  availableSeats: Array<{ id: string; label: string }>;
+};
+type RebookingErrorResponse = { ok: false; error: { message: string } };
+type RebookingSearchResponse = { ok: true; data: { data: RebookingFlight[] } };
+type RebookingConfirmResponse = { ok: true; data: { booking: PublicBookingView } };
+
+function todayInArgentina() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function tomorrowInArgentina() {
+  const tomorrow = new Date(`${todayInArgentina()}T12:00:00Z`);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  return tomorrow.toISOString().slice(0, 10);
+}
+
+function RebookingModal({
+  cabin, date, error, flights, loading, onCancel, onConfirm, onDateChange, onSearch,
+  onSelect, onSeatChange, passengers, passengerCount, preservedSeat, selected, selectedSeatIds, route,
+}: {
+  cabin: string;
+  date: string;
+  error: string | null;
+  flights: RebookingFlight[];
+  loading: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+  onDateChange: (date: string) => void;
+  onSearch: () => void;
+  onSelect: (value: string) => void;
+  onSeatChange: (index: number, seatId: string) => void;
+  passengers: PublicBookingView['passengers'];
+  passengerCount: number;
+  preservedSeat: boolean;
+  selected: string | null;
+  selectedSeatIds: string[];
+  route: string;
+}) {
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#1A1038]/60 p-3 sm:p-6" role="presentation">
+      <section
+        aria-labelledby="rebooking-title"
+        aria-modal="true"
+        className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-xl bg-surface-container-lowest p-4 shadow-2xl sm:p-6"
+        role="dialog"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="font-headline-md text-headline-md text-primary-container font-bold" id="rebooking-title">
+              Reprogramar vuelo
+            </h2>
+            <p className="mt-1 font-body-sm text-body-sm text-on-surface-variant">
+              Vuelos futuros para la misma ruta: {route}.
+            </p>
+          </div>
+          <button aria-label="Cerrar" className="rounded-md p-2 text-outline hover:bg-surface-container-low" onClick={onCancel} type="button">
+            <span aria-hidden="true" className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <div className="mt-4 rounded-lg border border-outline-variant bg-surface-container-low p-3 font-body-sm text-body-sm text-on-surface">
+          Tu clase: <strong>{cabin}</strong>. Se muestran vuelos con al menos {passengerCount} lugares libres en esa clase.
+        </div>
+        {preservedSeat && (
+          <div className="mt-3 rounded-lg border border-outline-variant bg-secondary-container/10 p-3 font-body-sm text-body-sm text-on-surface">
+            Ya abonaste la elección de asiento. Seleccioná un asiento libre para cada pasajero sin volver a pagar el adicional.
+          </div>
+        )}
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+          <label className="font-label-sm text-label-sm font-bold text-outline" htmlFor="rebooking-date">
+            Nueva fecha
+            <input
+              className="mt-1 block h-11 w-full rounded-lg border border-outline-variant bg-surface-container-low px-3 text-on-surface"
+              id="rebooking-date"
+              min={tomorrowInArgentina()}
+              onChange={(event) => onDateChange(event.target.value)}
+              type="date"
+              value={date}
+            />
+          </label>
+          <button className="h-11 rounded-lg border border-outline-variant bg-surface-container-low px-5 font-label-lg text-label-lg font-bold text-primary-container disabled:opacity-60" disabled={loading || date <= todayInArgentina()} onClick={onSearch} type="button">
+            {loading ? 'Buscando…' : 'Buscar vuelos'}
+          </button>
+        </div>
+
+        {flights.length > 0 && (
+          <div className="mt-4 overflow-x-auto rounded-lg border border-outline-variant">
+            <table className="w-full min-w-[620px] border-collapse text-left font-body-sm text-body-sm">
+              <thead className="bg-surface-container-low text-outline">
+                <tr>
+                  <th className="px-3 py-2">Elegir</th>
+                  <th className="px-3 py-2">Vuelo</th>
+                  <th className="px-3 py-2">Salida</th>
+                  <th className="px-3 py-2">Llegada</th>
+                  <th className="px-3 py-2">Tarifa {cabin}</th>
+                  <th className="px-3 py-2">Lugares</th>
+                </tr>
+              </thead>
+              <tbody>
+                {flights.map((flight) => flight.fares.map((fare) => {
+                  const key = `${flight.id}:${fare.id}`;
+                  const isSelected = selected === key;
+                  return (
+                    <tr className={isSelected ? 'border-t border-outline-variant bg-secondary-container/20' : 'border-t border-outline-variant'} key={key}>
+                      <td className="px-3 py-3">
+                        <input aria-label={`Elegir vuelo ${flight.code}`} checked={isSelected} name="replacement-flight" onChange={() => onSelect(key)} type="radio" />
+                      </td>
+                      <td className="px-3 py-3 font-bold text-primary-container">{flight.code}</td>
+                      <td className="px-3 py-3">{formatDayMonth(flight.departureAt)} · {formatTime(flight.departureAt)}</td>
+                      <td className="px-3 py-3">{formatTime(flight.arrivalAt)}</td>
+                      <td className="px-3 py-3">{fare.name}</td>
+                      <td className="px-3 py-3">{fare.seatsAvailable} libres</td>
+                    </tr>
+                  );
+                }))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {preservedSeat && selected && (() => {
+          const selectedFlight = flights.find((flight) => flight.id === selected.split(':')[0]);
+          if (!selectedFlight) return null;
+          return (
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {passengers.map((passenger, index) => (
+                <label className="font-label-sm text-label-sm font-bold text-outline" htmlFor={`replacement-seat-${index}`} key={`${passenger.lastName}-${index}`}>
+                  Asiento para {passengerName(passenger.firstName, passenger.lastName) || `Pasajero ${index + 1}`}
+                  <select
+                    className="mt-1 block h-11 w-full rounded-lg border border-outline-variant bg-surface-container-low px-3 text-on-surface"
+                    id={`replacement-seat-${index}`}
+                    onChange={(event) => onSeatChange(index, event.target.value)}
+                    value={selectedSeatIds[index] ?? ''}
+                  >
+                    <option value="" disabled>Seleccione un asiento</option>
+                    {selectedFlight.availableSeats.map((seat) => (
+                      <option
+                        disabled={selectedSeatIds.some((chosen, chosenIndex) => chosen === seat.id && chosenIndex !== index)}
+                        key={seat.id}
+                        value={seat.id}
+                      >
+                        {seat.label}{seat.label === passenger.seatNumber ? ' · asiento actual' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+          );
+        })()}
+
+        <p className="mt-3 font-body-sm text-body-sm text-on-surface-variant">
+          El valor ya abonado se conserva. Al confirmar se reemplaza el tramo y se reemite el pasaje actualizado.
+        </p>
+        {error && <p className="mt-3 rounded-lg border border-secondary/30 bg-error-container px-4 py-3 font-body-sm text-body-sm text-on-error-container" role="alert">{error}</p>}
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button className="h-11 rounded-lg border border-outline-variant px-5 font-label-lg text-label-lg font-bold text-outline" disabled={loading} onClick={onCancel} type="button">Cancelar</button>
+          <button className="h-11 rounded-lg bg-secondary px-5 font-label-lg text-label-lg font-bold text-on-secondary disabled:cursor-not-allowed disabled:opacity-50" disabled={loading || !selected || (preservedSeat && selectedSeatIds.filter(Boolean).length !== passengerCount)} onClick={onConfirm} type="button">
+            {loading ? 'Confirmando…' : 'Confirmar cambio de vuelo'}
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
