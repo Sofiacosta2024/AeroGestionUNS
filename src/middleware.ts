@@ -15,7 +15,11 @@ const isPublic = createRouteMatcher([
   '/api/v1/reservas/consulta/factura',
   '/api/webhooks(.*)',
 ]);
-const isAdmin = createRouteMatcher(['/admin(.*)', '/api/admin(.*)']);
+const isAdmin = createRouteMatcher([
+  '/admin(.*)',
+  '/api/admin(.*)',
+  '/api/v1/admin(.*)',
+]);
 const isMostrador = createRouteMatcher(['/mostrador(.*)', '/api/mostrador(.*)']);
 
 // Exportados solo para las pruebas de rutas (US-14A): permiten verificar que

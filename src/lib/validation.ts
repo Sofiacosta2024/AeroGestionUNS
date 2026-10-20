@@ -321,6 +321,40 @@ export const bookingUpdateSchema = z
   })
   .refine((d) => Object.keys(d).length > 0, { message: 'No hay campos para actualizar' });
 
+export const adminBookingSearchQuery = z
+  .object({
+    bookingCode: z.string().trim().max(20).optional(),
+    documentNumber: z.string().trim().max(32).optional(),
+    lastName: z.string().trim().max(80).optional(),
+    flightCode: z.string().trim().max(20).optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(50).default(20),
+  })
+  .refine(
+    (value) =>
+      [value.bookingCode, value.documentNumber, value.lastName, value.flightCode].some(
+        (v) => !!v && v.trim().length > 0,
+      ),
+    {
+      message: 'Debe ingresar al menos un criterio de búsqueda',
+      path: ['bookingCode'],
+    },
+  );
+
+export const bookingPassengerAdminUpdateSchema = z
+  .object({
+    firstName: required(80).optional(),
+    lastName: required(80).optional(),
+    documentType: documentTypeEnum.optional(),
+    documentNumber: required(32).optional(),
+    birthDate: dateIso.optional().nullable(),
+    passengerId: z.string().cuid().optional().nullable(),
+    seatId: z.string().cuid().optional().nullable(),
+  })
+  .refine((d) => Object.keys(d).length > 0, {
+    message: 'No hay campos para actualizar',
+  });
+
 export const bookingPassengerSchema = z.object({
   passengerId: z.string().cuid().optional().nullable(),
   firstName: required(80),
