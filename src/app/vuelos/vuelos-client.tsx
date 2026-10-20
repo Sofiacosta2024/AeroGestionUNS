@@ -52,22 +52,6 @@ const STEPS: { n: number; label: string; icon?: string; state: 'active' | 'upcom
   { n: 4, label: '4. Confirmación', state: 'ghost' },
 ];
 
-<<<<<<< HEAD
-/**
- * Secciones del menu que todavia no tienen pantalla propia. Antes eran `<a href="#">`,
- * que al hacer clic solo llevaban al tope de la pagina sin explicar nada; ahora
- * avisan que estan en construccion.
- */
-const PENDING_SECTIONS: { path: string; label: string; short: string }[] = [
-  { path: 'mis-reservas', label: 'Mis Reservas', short: 'Reservas' },
-  { path: 'check-in-online', label: 'Check-in Online', short: 'Check-in' },
-];
-
-/** Acceso al panel, visible solo para cuentas con permisos de administrador. */
-const ADMIN_SECTION = { href: '/admin', label: 'Ir a la pantalla de admin', short: 'Ir a admin' };
-
-=======
->>>>>>> SofiBrianAnge
 type Selection = { flightId: string; fareId: string };
 
 type ApiEnvelope<T> = { ok: true; data: T } | { ok: false; error: { message: string } };
