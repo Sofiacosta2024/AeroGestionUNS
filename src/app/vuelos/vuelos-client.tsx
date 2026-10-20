@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { formatDayMonth, formatDuration, formatFullDate, formatTime, formatWeekday } from '@/lib/format';
 import { localWeekDays } from '@/lib/dates';
 import type {
@@ -69,6 +70,7 @@ const cheapestIndex = (prices: SerializedPrice[]) =>
   prices.reduce((best, p, i) => (p.price < prices[best]!.price ? i : best), 0);
 
 export default function VuelosClient({ bootstrap }: { bootstrap: VuelosBootstrap }) {
+  const router = useRouter();
   const [tripType, setTripType] = useState<'ROUND_TRIP' | 'ONE_WAY'>('ROUND_TRIP');
   const [origin, setOrigin] = useState(bootstrap.initialQuery.origin);
   const [destination, setDestination] = useState(bootstrap.initialQuery.destination);
@@ -222,160 +224,7 @@ if (slotDef.to) flightQuery.set('timeTo', slotDef.to);
 
   return (
     <>
-<<<<<<< HEAD
-      <header className="fixed top-0 left-0 w-full z-50 bg-primary-container shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
-        <div className="min-h-20 w-full px-4 sm:px-space-lg lg:px-margin py-3 lg:py-0 flex flex-wrap items-center justify-between gap-space-sm lg:gap-space-md">
-          <div className="flex items-center gap-space-md min-w-0 shrink-0">
-            <Logo />
-            <div className="flex flex-col min-w-0">
-              <div className="flex items-center gap-space-xs">
-                <span className="font-headline-sm text-headline-sm text-surface-container-lowest leading-none whitespace-nowrap">
-                  AeroGestión
-                </span>
-                <span className="font-headline-sm text-headline-sm text-secondary leading-none whitespace-nowrap">
-                  UNS
-                </span>
-              </div>
-              <span className="font-label-sm text-label-sm text-primary-fixed-dim uppercase tracking-wider leading-tight hidden sm:block">
-                Sistema Operativo Aeronáutico
-              </span>
-            </div>
-            <div className="hidden xl:flex items-center gap-space-xs bg-primary px-space-sm py-space-xs rounded-full ml-space-xs">
-              <span className="w-2 h-2 rounded-full bg-secondary-container animate-pulse" />
-              <span className="font-code-telemetry text-code-telemetry text-tertiary-fixed">
-                BHI HUB · OPERATIVO
-              </span>
-            </div>
-          </div>
-
-          <nav
-            aria-label="Navegacion principal"
-            className="hidden lg:flex items-center gap-space-xs"
-            data-active-classes="bg-secondary text-on-secondary font-label-lg rounded-lg shadow-[0_1px_8px_rgba(0,0,0,0.04)]"
-          >
-            <a
-              aria-current="page"
-              className="px-space-md py-space-sm transition-colors bg-secondary text-on-secondary font-label-lg rounded-lg shadow-[0_1px_8px_rgba(0,0,0,0.04)]"
-              data-path="buscar-vuelos"
-              href="/vuelos"
-            >
-              Buscar Vuelos
-            </a>
-            {PENDING_SECTIONS.map((s) => (
-              <button
-                key={s.path}
-                className="px-space-md py-space-sm rounded-lg font-label-lg text-label-lg text-primary-fixed-dim hover:bg-primary hover:text-on-primary transition-colors"
-                data-path={s.path}
-                onClick={() => setNotice(s.label)}
-                type="button"
-              >
-                {s.label}
-              </button>
-            ))}
-            {bootstrap.user?.isAdmin && (
-              <a
-                className="px-space-md py-space-sm rounded-lg font-label-lg text-label-lg bg-primary text-primary-fixed-dim hover:bg-secondary hover:text-on-secondary transition-colors"
-                href={ADMIN_SECTION.href}
-              >
-                {ADMIN_SECTION.label}
-              </a>
-            )}
-          </nav>
-
-          <div className="flex items-center gap-space-sm sm:gap-space-md shrink-0">
-            <div className="hidden sm:flex flex-col items-end">
-              <span className="font-code-telemetry text-code-telemetry text-primary-fixed leading-tight">
-                {clock} UTC-3
-              </span>
-              <span className="font-label-sm text-label-sm text-outline-variant uppercase">
-                Hora Oficial ART
-              </span>
-            </div>
-            <div className="relative flex items-center justify-center">
-              <button
-                aria-label="Notificaciones operativas"
-                className="w-10 h-10 rounded-full flex items-center justify-center text-primary-fixed-dim hover:bg-primary hover:text-on-primary transition-colors"
-                onClick={() => setNotice('Centro de Control BHI')}
-                type="button"
-              >
-                <span className="material-symbols-outlined">notifications</span>
-              </button>
-              <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-secondary ring-2 ring-primary-container" />
-            </div>
-
-            {bootstrap.user ? (
-              <button
-                className="flex items-center gap-space-sm bg-primary/70 p-space-xs pl-space-sm rounded-full hover:bg-primary transition-colors"
-                onClick={logout}
-                title="Cerrar sesion"
-                type="button"
-              >
-                <div className="hidden md:flex flex-col text-right">
-                  <span className="font-label-md text-label-md text-surface-container-lowest leading-snug">
-                    {bootstrap.user.name}
-                  </span>
-                  <span className="font-label-sm text-label-sm text-secondary-fixed leading-none">
-                    {bootstrap.user.role}
-                  </span>
-                </div>
-                  <span className="w-8 h-8 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center font-label-md text-label-md font-bold">
-                    {bootstrap.user.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()}
-                  </span>             
-               </button>
-            ) : (
-              <div className="flex items-center gap-space-sm bg-primary/70 p-space-xs pl-space-sm rounded-full">
-                <div className="hidden md:flex flex-col text-right">
-                  <span className="font-label-md text-label-md text-surface-container-lowest leading-snug">
-                    Invitado
-                  </span>
-                  <span className="font-label-sm text-label-sm text-secondary-fixed leading-none">
-                    Sesion no iniciada
-                  </span>
-                </div>
-                <a
-                  className="font-label-md text-label-md text-secondary-fixed hover:text-on-primary transition-colors whitespace-nowrap"
-                  href="/login"
-                >
-                  Ingresar
-                </a>
-              </div>
-            )}
-          </div>
-
-          {/* La nav de escritorio es `hidden lg:flex`: sin esta fila, en movil y
-              tablet no habia ninguna via de navegacion. */}
-          <nav
-            aria-label="Navegacion principal"
-            className="flex lg:hidden order-last w-full items-center gap-space-xs overflow-x-auto"
-          >
-            <a
-              aria-current="page"
-              className="shrink-0 px-3 py-1.5 rounded-lg bg-secondary text-on-secondary font-label-md text-label-md"
-              href="/vuelos"
-            >
-              Buscar Vuelos
-            </a>
-            {PENDING_SECTIONS.map((s) => (
-              <button
-                key={s.path}
-                className="shrink-0 px-3 py-1.5 rounded-lg font-label-md text-label-md text-primary-fixed-dim bg-primary/60"
-                onClick={() => setNotice(s.label)}
-                type="button"
-              >
-                {s.short}
-              </button>
-            ))}
-            {bootstrap.user?.isAdmin && (
-              <a
-                className="shrink-0 px-3 py-1.5 rounded-lg font-label-md text-label-md text-primary-fixed-dim bg-primary hover:bg-secondary hover:text-on-secondary transition-colors"
-                href={ADMIN_SECTION.href}
-              >
-                {ADMIN_SECTION.short}
-              </a>
-            )}
-          </nav>
-        </div>
-      </header>
+      <SiteHeader activePath="vuelos" onNotice={setNotice} user={bootstrap.user} />
 
       {notice && (
         <div
@@ -401,9 +250,6 @@ if (slotDef.to) flightQuery.set('timeTo', slotDef.to);
           </div>
         </div>
       )}
-=======
-      <SiteHeader activePath="vuelos" onNotice={setNotice} user={bootstrap.user} />
->>>>>>> SofiBrianAnge
 
       <main className="w-full pt-32 lg:pt-20 bg-surface min-h-[calc(100vh-140px)]">
         <div className="flex flex-col w-full">
