@@ -38,6 +38,8 @@ La aplicación queda en `http://localhost:3000`:
 - `/admin/vuelos/nuevo` — alta y publicación de vuelos (RF-01, solo `ADMIN`).
 - `/admin/itinerario` — planilla del día y borradores pendientes (RF-01, solo `ADMIN`).
 - `/admin/reservas` — búsqueda y gestión interna de reservas (US-14C, `ADMIN` y `MOSTRADOR`).
+- `/admin/vuelos/:id/reprogramar` — reprogramar fecha, hora, ruta o avión de un vuelo (US-11B, solo `ADMIN`).
+- `/admin/vuelos/:id/tarifas` — editar precio y capacidad por clase de un vuelo (US-11A, solo `ADMIN`).
 - `/` — redirige a `/vuelos` si hay sesión, a `/login` si no.
 
 ### Variables de entorno
@@ -118,7 +120,7 @@ src/
     flights.ts           include/serialización de vuelos
     format.ts            importes, horarios y fechas (ART)
     prisma.ts            cliente Prisma singleton
-    scheduling/          programación de vuelos (RF-01): reglas, repositorio y servicio
+    scheduling/          programación (RF-01) y reprogramación (US-11B) de vuelos: reglas, repositorio y servicios
     validation.ts        schemas Zod
     view-models.ts       formas de datos que cruzan a React
   tailwind (config.ts)   tokens compilados + variables por página
@@ -134,7 +136,7 @@ docs/
 
 - [`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md) — capas, sesión, zona horaria, temas.
 - [`docs/API.md`](docs/API.md) — los endpoints, convenciones y ejemplos.
-- [`docs/MODELO-DATOS.md`](docs/MODELO-DATOS.md) — las 20 tablas, sus claves y decisiones.
+- [`docs/MODELO-DATOS.md`](docs/MODELO-DATOS.md) — las 22 tablas, sus claves y decisiones.
 - [`docs/RF-01-ALTA-VUELOS.md`](docs/RF-01-ALTA-VUELOS.md) — qué se hizo en RF-01 (alta y publicación de vuelos) y qué tienen que saber los demás subgrupos.
 
 ---

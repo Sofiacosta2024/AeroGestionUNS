@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { UserButton } from '@clerk/nextjs';
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
+import { ToastProvider } from '@/components/Toaster';
 import './booking.css';
 
 export default async function BookingLayout({
@@ -40,6 +41,7 @@ export default async function BookingLayout({
         </span>
         <span>Proyecto universitario · Pagos simulados</span>
       </footer>
+      <ToastProvider />
     </div>
   );
 }

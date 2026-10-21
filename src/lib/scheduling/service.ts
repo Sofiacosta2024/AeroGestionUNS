@@ -1,15 +1,16 @@
 import { AircraftStatus, ScheduleStatus, type Prisma } from '@prisma/client';
 import { ApiError } from '@/lib/api';
+import { formatFullDate, toDateInput } from '@/lib/format';
 import { prisma } from '@/lib/prisma';
 import type { ScheduleInput, SingleFlightInput } from '@/lib/validation';
 import { addMinutes, expandOperatingDates, localDateTimeToUtc, localTimeOf, weekdayOf } from './calendar';
 import { summarizeCabins, validateClassOffers, type CabinUsage, type OfferIssue } from './capacity';
-import { schedulingRules, type SchedulingRules } from './config';
+import { lastSchedulableDate, schedulingRules, type SchedulingRules } from './config';
 import {
   describeConflict,
   findAircraftOverlaps,
   findDepartureGapConflicts,
-  findPastDepartures,
+  OVERLAP_MESSAGE,
   type PlannedFlight,
   type ScheduleConflict,
 } from './conflicts';
@@ -55,8 +56,33 @@ function planFlights(input: ScheduleInput, durationMinutes: number): PlannedFlig
   });
 }
 
-function contextIssues(ctx: ScheduleContext, planned: readonly PlannedFlight[]): OfferIssue[] {
+/**
+ * Solo se programa desde hoy hasta hoy + 1 año, inclusive (BUG-01 de la demo 1). Se corta
+ * antes de expandir el calendario: un rango absurdo (ej. año 9999) generaria millones de fechas.
+ * Tambien la usa la reprogramacion (US-11B) con desde = hasta = la nueva fecha.
+ */
+export function assertSchedulableRange(input: Pick<ScheduleInput, 'validFrom' | 'validTo'>, now: Date): void {
+  const today = toDateInput(now);
+  const last = lastSchedulableDate(today);
   const issues: OfferIssue[] = [];
+  if (input.validFrom < today) {
+    issues.push({ campo: 'validFrom', mensaje: 'La fecha de inicio ya paso' });
+  }
+  if (input.validTo > last) {
+    issues.push({
+      campo: 'validTo',
+      mensaje: `Solo se puede programar hasta el ${formatFullDate(last)} (un año desde hoy)`,
+    });
+  }
+  if (issues.length > 0) throw ApiError.unprocessable('Fechas fuera del rango programable', issues);
+}
+
+function contextIssues(ctx: ScheduleContext, planned: readonly PlannedFlight[], now: Date): OfferIssue[] {
+  const issues: OfferIssue[] = [];
+  // Solo puede pasar con un vuelo de hoy a una hora que ya paso.
+  for (const p of planned.filter((f) => f.departureAt.getTime() <= now.getTime())) {
+    issues.push({ campo: 'departureTime', mensaje: `${formatFullDate(p.date)}: la salida ya paso` });
+  }
   if (!ctx.route.isActive) {
     issues.push({ campo: 'routeId', mensaje: 'La ruta esta inactiva' });
   }
@@ -72,45 +98,53 @@ function contextIssues(ctx: ScheduleContext, planned: readonly PlannedFlight[]):
   return issues;
 }
 
-async function findConflicts(
+/** Choques con vuelos ya programados. `exceptFlightId`: el vuelo que se reprograma (US-11B). */
+export async function findConflicts(
   db: Db,
   ctx: ScheduleContext,
   planned: readonly PlannedFlight[],
   rules: SchedulingRules,
-  now: Date,
+  exceptFlightId?: string,
 ): Promise<ScheduleConflict[]> {
   const first = planned[0];
   const last = planned[planned.length - 1];
   if (!first || !last) return [];
 
   const [sameOrigin, sameAircraft] = await Promise.all([
-    repo.findDeparturesFrom(db, ctx.route.originAirportId, {
-      from: addMinutes(first.departureAt, -rules.gapMinutes),
-      to: addMinutes(last.departureAt, rules.gapMinutes),
-    }),
+    repo.findDeparturesFrom(
+      db,
+      ctx.route.originAirportId,
+      { from: addMinutes(first.departureAt, -rules.gapMinutes), to: addMinutes(last.departureAt, rules.gapMinutes) },
+      exceptFlightId,
+    ),
     // Ventana ampliada con la rotacion: trae tambien el vuelo anterior y el siguiente.
-    repo.findAircraftFlights(db, ctx.aircraft.id, {
-      from: addMinutes(first.departureAt, -rules.turnaroundMinutes),
-      to: addMinutes(last.arrivalAt, rules.turnaroundMinutes),
-    }),
+    repo.findAircraftFlights(
+      db,
+      ctx.aircraft.id,
+      {
+        from: addMinutes(first.departureAt, -rules.turnaroundMinutes),
+        to: addMinutes(last.arrivalAt, rules.turnaroundMinutes),
+      },
+      exceptFlightId,
+    ),
   ]);
 
   return [
-    ...findPastDepartures(planned, now),
     ...findDepartureGapConflicts(planned, sameOrigin, rules.gapMinutes),
     ...findAircraftOverlaps(planned, sameAircraft, rules.turnaroundMinutes),
   ];
 }
 
 async function evaluate(db: Db, input: ScheduleInput, now: Date): Promise<Evaluation> {
+  assertSchedulableRange(input, now);
   const ctx = await repo.loadScheduleContext(db, input.routeId, input.aircraftId);
   if (!ctx) throw ApiError.badRequest('La ruta o el avion indicados no existen');
 
   const rules = schedulingRules();
   const planned = planFlights(input, ctx.route.durationMinutes);
-  const conflicts = await findConflicts(db, ctx, planned, rules, now);
+  const conflicts = await findConflicts(db, ctx, planned, rules);
   const issues = [
-    ...contextIssues(ctx, planned),
+    ...contextIssues(ctx, planned, now),
     ...validateClassOffers(input.fares, ctx.classes, ctx.cabinSeats),
   ];
 
@@ -135,7 +169,7 @@ function assertSavable(view: ScheduleEvaluation): void {
     throw ApiError.unprocessable('El cronograma tiene datos invalidos', view.issues);
   }
   if (view.conflicts.length > 0) {
-    throw ApiError.conflict('El cronograma choca con vuelos ya programados', view.conflicts);
+    throw ApiError.conflict(OVERLAP_MESSAGE, view.conflicts);
   }
 }
 

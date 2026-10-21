@@ -20,6 +20,7 @@ const isPublic = createRouteMatcher([
   '/api/webhooks(.*)',
   '/api/flights(.*)',
   '/api/bookings(.*)',
+  '/api/v1/reservas(.*)',
   '/api/health',
 ]);
 const isAdmin = createRouteMatcher([

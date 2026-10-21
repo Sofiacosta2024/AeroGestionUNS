@@ -1,4 +1,4 @@
-import { FlightStatus, ScheduleStatus, type CabinClass, type Prisma } from '@prisma/client';
+import { BookingStatus, FlightStatus, ScheduleStatus, type CabinClass, type Prisma } from '@prisma/client';
 import { formatFlightCode } from '@/lib/codes';
 import type { ScheduleInput } from '@/lib/validation';
 import type { CabinSeats, SellableClass } from './capacity';
@@ -46,7 +46,7 @@ export async function loadScheduleContext(
   routeId: string,
   aircraftId: string,
 ): Promise<ScheduleContext | null> {
-  const [route, aircraft, seatGroups, classes] = await Promise.all([
+  const [route, aircraft, cabinSeats, classes] = await Promise.all([
     db.route.findUnique({
       where: { id: routeId },
       select: {
@@ -61,7 +61,7 @@ export async function loadScheduleContext(
       where: { id: aircraftId },
       select: { id: true, registration: true, status: true },
     }),
-    db.seat.groupBy({ by: ['cabinClass'], where: { aircraftId }, _count: { _all: true } }),
+    loadCabinSeats(db, aircraftId),
     db.fare.findMany({
       where: { isActive: true },
       select: { id: true, name: true, cabinClass: true },
@@ -71,21 +71,28 @@ export async function loadScheduleContext(
 
   if (!route || !aircraft) return null;
 
-  const cabinSeats: CabinSeats = Object.fromEntries(
-    seatGroups.map((g) => [g.cabinClass, g._count._all] as [CabinClass, number]),
-  );
-
   return { route, aircraft, cabinSeats, classes };
 }
+
+/** Asientos del mapa del avion, por cabina. */
+export async function loadCabinSeats(db: Db, aircraftId: string): Promise<CabinSeats> {
+  const groups = await db.seat.groupBy({ by: ['cabinClass'], where: { aircraftId }, _count: { _all: true } });
+  return Object.fromEntries(groups.map((g) => [g.cabinClass, g._count._all] as [CabinClass, number]));
+}
+
+/** Deja afuera al vuelo que se reprograma (US-11B): no choca consigo mismo. */
+const except = (flightId?: string) => (flightId ? { id: { not: flightId } } : {});
 
 /** Vuelos no cancelados que salen de `originAirportId` dentro de la ventana. */
 export function findDeparturesFrom(
   db: Db,
   originAirportId: string,
   window: { from: Date; to: Date },
+  exceptFlightId?: string,
 ): Promise<ScheduledFlight[]> {
   return db.flight.findMany({
     where: {
+      ...except(exceptFlightId),
       status: { not: FlightStatus.CANCELLED },
       route: { originAirportId },
       departureAt: { gte: window.from, lte: window.to },
@@ -99,9 +106,11 @@ export function findAircraftFlights(
   db: Db,
   aircraftId: string,
   window: { from: Date; to: Date },
+  exceptFlightId?: string,
 ): Promise<ScheduledFlight[]> {
   return db.flight.findMany({
     where: {
+      ...except(exceptFlightId),
       aircraftId,
       status: { not: FlightStatus.CANCELLED },
       departureAt: { lt: window.to },
@@ -234,4 +243,141 @@ export function toScheduleInput(schedule: ScheduleWithRelations): ScheduleInput 
     departureTime: schedule.departureTime,
     fares: schedule.fares.map((f) => ({ fareId: f.fareId, price: Number(f.price), seats: f.seats })),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Reprogramacion de un vuelo publicado (US-11B)
+// ---------------------------------------------------------------------------
+
+const flightToRescheduleSelect = {
+  id: true,
+  code: true,
+  status: true,
+  routeId: true,
+  aircraftId: true,
+  departureAt: true,
+  arrivalAt: true,
+  route: { select: { code: true, originAirportId: true, destinationAirportId: true } },
+  aircraft: { select: { registration: true, model: true } },
+  fares: {
+    select: {
+      id: true,
+      fareId: true,
+      seatCapacity: true,
+      availableSeats: true,
+      fare: { select: { name: true, cabinClass: true } },
+    },
+    orderBy: { fare: { basePrice: 'asc' } },
+  },
+} satisfies Prisma.FlightSelect;
+
+export type FlightToReschedule = Prisma.FlightGetPayload<{ select: typeof flightToRescheduleSelect }>;
+
+export function findFlightToReschedule(db: Db, id: string): Promise<FlightToReschedule | null> {
+  return db.flight.findUnique({ where: { id }, select: flightToRescheduleSelect });
+}
+
+/** Reservas del vuelo que siguen en pie: pagadas, confirmadas o pendientes con el bloqueo vigente. */
+function activeBookingsOf(flightId: string, now: Date): Prisma.BookingWhereInput {
+  return {
+    flights: { some: { flightId } },
+    OR: [
+      { status: { in: [BookingStatus.CONFIRMED, BookingStatus.PAID] } },
+      { status: BookingStatus.PENDING, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+    ],
+  };
+}
+
+export type FlightBookingLoad = {
+  bookings: number;
+  passengers: number;
+  /** Asientos asignados a pasajeros o bloqueados durante una compra (RF-03). */
+  seatsTaken: number;
+};
+
+export async function countFlightBookings(db: Db, flightId: string, now: Date): Promise<FlightBookingLoad> {
+  const active = activeBookingsOf(flightId, now);
+  const [bookings, assignedSeats, lockedSeats] = await Promise.all([
+    db.booking.aggregate({ where: active, _count: { _all: true }, _sum: { passengersCount: true } }),
+    db.bookingPassenger.count({ where: { seatId: { not: null }, booking: active } }),
+    db.seatLock.count({ where: { flightId, expiresAt: { gt: now } } }),
+  ]);
+  return {
+    bookings: bookings._count._all,
+    passengers: bookings._sum.passengersCount ?? 0,
+    seatsTaken: assignedSeats + lockedSeats,
+  };
+}
+
+/**
+ * Bloquea el vuelo y sus clases hasta el fin de la transaccion: una compra (RF-03) que
+ * descuenta asientos de este vuelo espera a que termine la reprogramacion.
+ */
+export async function lockFlight(db: Db, flightId: string): Promise<void> {
+  await db.$queryRaw`SELECT id FROM flights WHERE id = ${flightId} FOR UPDATE`;
+  await db.$queryRaw`SELECT id FROM flight_fares WHERE flight_id = ${flightId} FOR UPDATE`;
+}
+
+/** Guarda el nuevo horario, ruta y avion, la capacidad ajustada y la salida copiada en las reservas. */
+export async function applyReschedule(
+  db: Db,
+  flightId: string,
+  itinerary: { routeId: string; aircraftId: string; departureAt: Date; arrivalAt: Date },
+  fares: readonly { id: string; seatCapacity: number; availableSeats: number }[],
+): Promise<void> {
+  await db.flight.update({ where: { id: flightId }, data: itinerary });
+  for (const f of fares) {
+    await db.flightFare.update({
+      where: { id: f.id },
+      data: { seatCapacity: f.seatCapacity, availableSeats: f.availableSeats },
+    });
+  }
+  await db.bookingFlight.updateMany({ where: { flightId }, data: { departureAt: itinerary.departureAt } });
+}
+
+// ---------------------------------------------------------------------------
+// Precio y capacidad por clase de un vuelo publicado (US-11A)
+// ---------------------------------------------------------------------------
+
+const flightFaresSelect = {
+  id: true,
+  code: true,
+  status: true,
+  aircraftId: true,
+  departureAt: true,
+  route: {
+    select: {
+      originAirport: { select: { iataCode: true, city: true } },
+      destinationAirport: { select: { iataCode: true, city: true } },
+    },
+  },
+  aircraft: { select: { registration: true, model: true } },
+  fares: {
+    select: {
+      id: true,
+      fareId: true,
+      price: true,
+      currency: true,
+      seatCapacity: true,
+      availableSeats: true,
+      fare: { select: { name: true, cabinClass: true } },
+    },
+    orderBy: { fare: { basePrice: 'asc' } },
+  },
+} satisfies Prisma.FlightSelect;
+
+export type FlightWithFares = Prisma.FlightGetPayload<{ select: typeof flightFaresSelect }>;
+
+export function findFlightWithFares(db: Db, id: string): Promise<FlightWithFares | null> {
+  return db.flight.findUnique({ where: { id }, select: flightFaresSelect });
+}
+
+/** Precio y capacidad nuevos por fila de `flight_fares`; los disponibles ya vienen recalculados. */
+export async function updateFlightFares(
+  db: Db,
+  fares: readonly { id: string; price: number; seatCapacity: number; availableSeats: number }[],
+): Promise<void> {
+  for (const { id, ...data } of fares) {
+    await db.flightFare.update({ where: { id }, data });
+  }
 }

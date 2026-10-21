@@ -4,6 +4,7 @@ import { audit } from '@/lib/audit';
 import { requireRole } from '@/lib/auth';
 import { flightInclude, serializeFlight } from '@/lib/flights';
 import { prisma } from '@/lib/prisma';
+import { applyItineraryPatch } from '@/lib/scheduling/reschedule';
 import { flightUpdateSchema } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
@@ -28,10 +29,35 @@ export const GET = handler(async (_req: Request, ctx: Ctx) => {
 export const PATCH = handler(async (req: Request, ctx: Ctx) => {
   const user = await requireRole(UserRole.MOSTRADOR);
   const { id } = await ctx.params;
-  const body = await parseBody(req, flightUpdateSchema);
+  const { routeId, aircraftId, departureAt, ...details } = await parseBody(req, flightUpdateSchema);
+
+  // Cambio US-11B: ruta, avion y salida ya no se escriben directo. Pasan por las mismas
+  // reglas que la reprogramacion del panel (choques, reservas, capacidad) y la llegada se
+  // recalcula. `code` y `arrivalAt` ya no se aceptan (ver flightUpdateSchema).
+  const rescheduled = await applyItineraryPatch(id, { routeId, aircraftId, departureAt });
+  if (rescheduled) {
+    await audit({
+      userId: user.id,
+      action: 'RESCHEDULE',
+      entity: 'Flight',
+      entityId: id,
+      metadata: {
+        before: rescheduled.before,
+        after: rescheduled.after,
+        affectedPassengers: rescheduled.affectedPassengers,
+        resizedClasses: rescheduled.resizedClasses,
+      },
+    });
+  }
+
+  if (Object.keys(details).length === 0) {
+    const flight = await prisma.flight.findUnique({ where: { id }, include: flightInclude });
+    if (!flight) throw ApiError.notFound('Vuelo no encontrado');
+    return ok(serializeFlight(flight));
+  }
 
   const flight = await prisma.flight
-    .update({ where: { id }, data: body, include: flightInclude })
+    .update({ where: { id }, data: details, include: flightInclude })
     .catch(() => {
       throw ApiError.notFound('Vuelo no encontrado');
     });

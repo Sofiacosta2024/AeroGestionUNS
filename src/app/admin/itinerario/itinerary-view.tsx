@@ -8,7 +8,7 @@ import { formatArs, formatFullDate, formatWeekday } from '@/lib/format';
 import { shiftDate } from '@/lib/scheduling/calendar';
 import type { ItineraryFlightView } from '@/lib/scheduling/itinerary';
 import type { SerializedSchedule } from '@/lib/scheduling/serializers';
-import { ApiRequestError, apiRequest, detailMessages } from '../api-client';
+import { apiRequest, errorDetails } from '../api-client';
 
 type Props = {
   date: string;
@@ -26,7 +26,10 @@ const STATUS_LABEL: Record<FlightStatus, string> = {
   CANCELLED: 'Cancelado',
 };
 
-const DAY_SHORT = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const ACTION_LINK =
+  'inline-flex items-center gap-1 font-label-md text-label-md text-secondary font-bold hover:underline whitespace-nowrap';
+
+const DAY_SHORT =['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
 const NAV_BUTTON =
   'flex items-center gap-1 px-space-md py-space-sm rounded-lg bg-surface-container text-primary hover:bg-surface-container-high font-label-lg text-label-lg';
@@ -96,6 +99,9 @@ function FlightsTable({ flights }: { flights: ItineraryFlightView[] }) {
             <th className="p-space-sm">Avión</th>
             <th className="p-space-sm">Clases (disponibles / ofrecidos · precio)</th>
             <th className="p-space-sm">Estado</th>
+            <th className="p-space-sm">
+              <span className="sr-only">Acciones</span>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -125,6 +131,21 @@ function FlightsTable({ flights }: { flights: ItineraryFlightView[] }) {
                   {STATUS_LABEL[f.status]}
                 </span>
               </td>
+              <td className="p-space-sm">
+                {/* US-11B y US-11A: solo vuelos programados o demorados que todavia no salieron. */}
+                {f.reschedulable && (
+                  <div className="flex flex-col items-start gap-1">
+                    <Link className={ACTION_LINK} href={`/admin/vuelos/${f.id}/reprogramar`}>
+                      <span className="material-symbols-outlined text-[18px]">edit_calendar</span>
+                      Reprogramar
+                    </Link>
+                    <Link className={ACTION_LINK} href={`/admin/vuelos/${f.id}/tarifas`}>
+                      <span className="material-symbols-outlined text-[18px]">sell</span>
+                      Editar tarifas
+                    </Link>
+                  </div>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -146,7 +167,7 @@ function DraftsSection({ drafts, onChanged }: { drafts: SerializedSchedule[]; on
     } catch (err) {
       setError({
         message: err instanceof Error ? err.message : 'No se pudo completar la acción',
-        details: err instanceof ApiRequestError ? detailMessages(err.details) : [],
+        details: errorDetails(err),
       });
     } finally {
       setBusyId(null);

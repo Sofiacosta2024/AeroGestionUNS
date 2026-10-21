@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import type { FormRoute, ScheduleFormData } from '@/lib/scheduling/form-data';
 import type { SerializedSchedule } from '@/lib/scheduling/serializers';
-import { ApiRequestError, apiRequest, detailMessages } from '../../api-client';
+import type { ScheduleEvaluation } from '@/lib/scheduling/service';
+import { apiRequest, errorDetails } from '../../api-client';
 import CheckPanel from './check-panel';
 import ClassOffersSection from './class-offers-section';
 import { ActionBar, PublishedPanel } from './form-actions';
@@ -12,14 +13,14 @@ import {
   arrivalPreview,
   findRoute,
   initialFormState,
-  plannedFlightsCount,
+  plannedFlightDates,
   toScheduleInput,
   type FormState,
   type OfferDraft,
 } from './form-model';
 import RouteSummary from './route-summary';
 import ScheduleSection from './schedule-section';
-import { useScheduleCheck } from './use-schedule-check';
+import { useLiveCheck } from '../../use-live-check';
 
 type Props = {
   data: ScheduleFormData;
@@ -50,7 +51,8 @@ export default function FlightScheduleForm({ data, draft }: Props) {
   const route = findRoute(routes, form.origin, form.destination);
   const aircraft = data.aircraft.find((a) => a.id === form.aircraftId) ?? null;
   const input = useMemo(() => toScheduleInput(form, route), [form, route]);
-  const check = useScheduleCheck(input);
+  const plannedDates = useMemo(() => plannedFlightDates(form), [form]);
+  const check = useLiveCheck<ScheduleEvaluation>('/api/flight-schedules/check', input);
   const canSubmit = input !== null && check.result?.canSave === true && !check.loading;
 
   const update = (patch: Partial<FormState>) => {
@@ -96,7 +98,7 @@ export default function FlightScheduleForm({ data, draft }: Props) {
       setFeedback({
         tone: 'error',
         message: err instanceof Error ? err.message : 'No se pudo guardar',
-        details: err instanceof ApiRequestError ? detailMessages(err.details) : [],
+        details: errorDetails(err),
       });
     } finally {
       setSubmitting(null);
@@ -134,7 +136,7 @@ export default function FlightScheduleForm({ data, draft }: Props) {
             form={form}
             onChange={update}
             onRouteCreated={addRoute}
-            plannedCount={plannedFlightsCount(form)}
+            plannedDates={plannedDates}
             route={route}
             rules={data.rules}
             today={data.today}
@@ -144,7 +146,7 @@ export default function FlightScheduleForm({ data, draft }: Props) {
           {feedback?.tone === 'error' && <FeedbackBanner feedback={feedback} />}
           <ActionBar
             canSubmit={canSubmit}
-            flightsCount={check.result?.flightsCount ?? plannedFlightsCount(form)}
+            flightsCount={check.result?.flightsCount ?? plannedDates.length}
             isDraft={draftId !== null}
             onPublish={() => save(true)}
             onSaveDraft={() => save(false)}

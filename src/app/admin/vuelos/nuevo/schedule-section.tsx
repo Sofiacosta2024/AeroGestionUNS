@@ -1,7 +1,7 @@
 'use client';
 
-import { formatDuration } from '@/lib/format';
-import type { SchedulingRules } from '@/lib/scheduling/config';
+import { formatDuration, formatFullDate, formatWeekday } from '@/lib/format';
+import { lastSchedulableDate, type SchedulingRules } from '@/lib/scheduling/config';
 import type { FormAircraft, FormAirport, FormRoute } from '@/lib/scheduling/form-data';
 import { ALL_DAYS, WEEKEND, WORKDAYS, type FormState, type ScheduleMode } from './form-model';
 import NewRouteForm from './new-route-form';
@@ -14,7 +14,8 @@ type Props = {
   route: FormRoute | null;
   rules: SchedulingRules;
   today: string;
-  plannedCount: number;
+  /** Fechas de los vuelos que se generarian (vista previa local). */
+  plannedDates: string[];
   arrival: { time: string; nextDay: boolean } | null;
   onChange: (patch: Partial<FormState>) => void;
   onRouteCreated: (route: FormRoute) => void;
@@ -31,15 +32,16 @@ const WEEK = [
   { value: 0, label: 'DOM', letter: 'D' },
 ];
 
-const INPUT =
+export const INPUT =
   'w-full bg-white px-3.5 py-2.5 rounded-xl font-medium text-slate-800 border border-slate-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E11D48]/20 focus:border-[#E11D48] transition-all text-sm';
-const SELECT =
+export const SELECT =
   'w-full bg-white px-3.5 py-3 rounded-xl font-bold text-slate-800 border border-slate-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E11D48]/20 focus:border-[#E11D48] transition-all text-sm cursor-pointer';
-const SMALL_LABEL = 'font-label-sm text-[11px] font-bold uppercase tracking-wider text-slate-500';
+export const SMALL_LABEL = 'font-label-sm text-[11px] font-bold uppercase tracking-wider text-slate-500';
 
 /** Card 1 del diseno: ruta, avion, fechas, hora y dias de operacion. */
 export default function ScheduleSection(props: Props) {
-  const { form, airports, aircraft, route, rules, today, plannedCount, arrival, onChange, onRouteCreated } = props;
+  const { form, airports, aircraft, route, rules, today, plannedDates, arrival, onChange, onRouteCreated } = props;
+  const maxDate = lastSchedulableDate(today);
   const needsRoute = form.origin && form.destination && form.origin !== form.destination && !route;
 
   function toggleDay(day: number) {
@@ -140,17 +142,17 @@ export default function ScheduleSection(props: Props) {
         {form.mode === 'single' ? (
           <label className="flex flex-col gap-space-xs">
             <span className={SMALL_LABEL}>Fecha del vuelo</span>
-            <input className={INPUT} min={today} onChange={(e) => onChange({ date: e.target.value })} type="date" value={form.date} />
+            <input className={INPUT} max={maxDate} min={today} onChange={(e) => onChange({ date: e.target.value })} type="date" value={form.date} />
           </label>
         ) : (
           <>
             <label className="flex flex-col gap-space-xs">
               <span className={SMALL_LABEL}>Inicio de vigencia</span>
-              <input className={INPUT} min={today} onChange={(e) => onChange({ validFrom: e.target.value })} type="date" value={form.validFrom} />
+              <input className={INPUT} max={maxDate} min={today} onChange={(e) => onChange({ validFrom: e.target.value })} type="date" value={form.validFrom} />
             </label>
             <label className="flex flex-col gap-space-xs">
               <span className={SMALL_LABEL}>Fin de vigencia</span>
-              <input className={INPUT} min={form.validFrom || today} onChange={(e) => onChange({ validTo: e.target.value })} type="date" value={form.validTo} />
+              <input className={INPUT} max={maxDate} min={form.validFrom || today} onChange={(e) => onChange({ validTo: e.target.value })} type="date" value={form.validTo} />
             </label>
           </>
         )}
@@ -221,12 +223,53 @@ export default function ScheduleSection(props: Props) {
         </div>
       )}
 
-      <p className="font-label-md text-label-md text-on-surface-variant">
-        {plannedCount > 0
-          ? `Se ${plannedCount === 1 ? 'generará 1 vuelo' : `generarán ${plannedCount} vuelos`}. El número de vuelo (AG-####) se asigna al publicar, uno por vuelo.`
-          : 'Elegí la fecha (o la vigencia y los días) para ver cuántos vuelos se generan.'}
-      </p>
+      <PlannedSummary dates={plannedDates} form={form} />
     </section>
+  );
+}
+
+const fullDay = (date: string) => `${formatWeekday(date)} ${formatFullDate(date)}`;
+
+/**
+ * Vista previa de lo que se genera (BUG-04 de la demo 1): cantidad, primer y ultimo vuelo,
+ * y aviso si el inicio de vigencia no es un dia de operacion.
+ */
+function PlannedSummary({ dates, form }: { dates: string[]; form: FormState }) {
+  const first = dates[0];
+  const last = dates[dates.length - 1];
+  const text = 'font-label-md text-label-md text-on-surface-variant';
+
+  if (!first || !last) {
+    const recurring = form.mode === 'recurring';
+    return (
+      <p className={text}>
+        {recurring && form.weekdays.length === 0
+          ? 'Elegí los días de operación para ver qué vuelos se generan.'
+          : recurring && form.validFrom && form.validTo
+            ? 'Ningún día de la vigencia coincide con los días elegidos.'
+            : 'Elegí la fecha (o la vigencia y los días) para ver cuántos vuelos se generan.'}
+      </p>
+    );
+  }
+
+  const startSkipped = form.mode === 'recurring' && first !== form.validFrom;
+  return (
+    <div className="flex flex-col gap-space-xs">
+      <p className={text}>
+        {dates.length === 1
+          ? `Se generará 1 vuelo, el ${fullDay(first)}.`
+          : `Se generarán ${dates.length} vuelos: el primero el ${fullDay(first)} y el último el ${fullDay(last)}.`}{' '}
+        El número de vuelo (AG-####) se asigna al publicar, uno por vuelo.
+      </p>
+      {startSkipped && (
+        <p className="flex items-start gap-1.5 text-xs font-semibold text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2" role="status">
+          <span className="material-symbols-outlined text-[16px] text-amber-600">warning</span>
+          <span>
+            El {fullDay(form.validFrom)} (inicio de vigencia) no es un día de operación: el primer vuelo sale el {fullDay(first)}.
+          </span>
+        </p>
+      )}
+    </div>
   );
 }
 

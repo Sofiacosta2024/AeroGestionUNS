@@ -9,11 +9,18 @@
  *   desde cualquier aeropuerto: se asume que vuelve vacio si hace falta.
  */
 
+import { addYears } from './calendar';
+
 const DEFAULT_DEPARTURE_GAP_MINUTES = 20;
 const DEFAULT_TURNAROUND_MINUTES = 120;
 
-/** Vigencia maxima de un cronograma, en dias corridos (desde y hasta inclusive). */
-export const MAX_VALIDITY_DAYS = 366;
+/**
+ * Ultima fecha programable (inclusive): hoy + 1 año (BUG-01 de la demo 1). Antes se
+ * limitaba el largo del periodo (366 dias) sin mirar la fecha actual.
+ */
+export function lastSchedulableDate(today: string): string {
+  return addYears(today, 1);
+}
 
 export type SchedulingRules = {
   /** Minutos minimos entre dos salidas del mismo aeropuerto. */

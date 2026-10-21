@@ -1,8 +1,9 @@
-import { formatFullDate } from '@/lib/format';
-import type { CheckState } from './use-schedule-check';
+import { OVERLAP_MESSAGE } from '@/lib/scheduling/conflicts';
+import type { ScheduleEvaluation } from '@/lib/scheduling/service';
+import type { CheckState } from '../../use-live-check';
 
 type Props = {
-  check: CheckState;
+  check: CheckState<ScheduleEvaluation>;
   /** Si ya hay datos suficientes para consultar al servidor. */
   ready: boolean;
 };
@@ -15,7 +16,7 @@ export default function CheckPanel({ check, ready }: Props) {
   if (!ready) {
     return (
       <Panel tone="neutral" icon="info">
-        Completá ruta, avión, fecha y hora para verificar disponibilidad.
+        Completá ruta, avión, fecha y hora (y los días de operación, si es un cronograma) para verificar disponibilidad.
       </Panel>
     );
   }
@@ -47,11 +48,10 @@ export default function CheckPanel({ check, ready }: Props) {
 
   return (
     <div className="flex flex-col gap-space-sm">
+      {/* BUG-02 de la demo 1: un unico mensaje; el detalle por vuelo sigue en la respuesta de la API. */}
       {conflicts.length > 0 && (
-        <Panel tone="error" icon="event_busy" title={`Choques de horario (${conflicts.length})`}>
-          <MessageList
-            messages={conflicts.map((c) => `${formatFullDate(c.date)} — ${c.message.replace(`${c.date}: `, '')}`)}
-          />
+        <Panel tone="error" icon="event_busy">
+          {OVERLAP_MESSAGE}
         </Panel>
       )}
       {issues.length > 0 && (
@@ -77,7 +77,7 @@ const ICON_COLORS = {
   error: 'text-[#E11D48]',
 } as const;
 
-function Panel(props: { tone: keyof typeof TONES; icon: string; title?: string; children: React.ReactNode }) {
+export function Panel(props: { tone: keyof typeof TONES; icon: string; title?: string; children: React.ReactNode }) {
   return (
     <div className={`flex items-start gap-space-sm p-4 rounded-2xl shadow-sm ${TONES[props.tone]}`} role="status">
       <span className={`material-symbols-outlined text-[22px] shrink-0 mt-0.5 ${ICON_COLORS[props.tone]}`}>{props.icon}</span>
@@ -89,7 +89,7 @@ function Panel(props: { tone: keyof typeof TONES; icon: string; title?: string; 
   );
 }
 
-function MessageList({ messages }: { messages: string[] }) {
+export function MessageList({ messages }: { messages: string[] }) {
   return (
     <ul className="list-disc pl-5 flex flex-col gap-0.5 font-body-sm text-body-sm">
       {messages.map((m) => (

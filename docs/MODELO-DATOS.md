@@ -1,8 +1,9 @@
 # Modelo de datos
 
-20 tablas sobre PostgreSQL. Fuente de verdad: [`prisma/schema.prisma`](../prisma/schema.prisma).
-Migraciones: [`prisma/migrations/`](../prisma/migrations/) (la inicial más las de RF-01: cronogramas
-de vuelos, corrección de datos de prueba y catálogo de 3 clases).
+22 tablas sobre PostgreSQL. Fuente de verdad: [`prisma/schema.prisma`](../prisma/schema.prisma).
+Migraciones: [`prisma/migrations/`](../prisma/migrations/) (la inicial, las de RF-01: cronogramas
+de vuelos, corrección de datos de prueba y catálogo de 3 clases; y las posteriores: RF-03
+bloqueo de asientos, US-14A índice de consulta pública y RF-05 comprobantes).
 
 ## Diagrama
 
@@ -15,7 +16,7 @@ User ──┬── Session
                       ├── BookingPassenger ──► Seat
                       │        ├── Baggage
                       │        └── BoardingPass ──► Seat
-                      └── Payment
+                      └── Payment ──► Comprobante (RF-05)
 
 WeeklyFare ──► Route
 AuditLog ──► User
@@ -51,6 +52,7 @@ FlightSchedule (RF-01) ──► Route, Aircraft, User (creador)
 | `booking_flights` | `id` | Tramo de la reserva: vuelo, tarifa, precio congelado, `is_return`, salida. |
 | `booking_passengers` | `id` | Pasajero dentro de una reserva: nombre, tipo/número de documento, nacimiento, asiento, código y estado de check-in. |
 | `payments` | `id` | Monto, método, estado, referencia externa. |
+| `comprobantes` | `id` | **RF-05.** Comprobante emitido (`PASAJE`/`FACTURA`) de una reserva: pago con el que se emitió, referencia de la transacción y momento. Único por `(booking_id, tipo)`. |
 | `baggage` | `id` | Tipo (`CABIN`/`HOLD`/`CARGO`/`SPECIAL`), etiqueta, estado, peso. |
 | `boarding_passes` | `id` | Código `BP-XXXXXX`, pasajero, asiento, vuelo, estado. |
 | `audit_logs` | `id` | `user_id`, acción, entidad, entidad relacionada, metadata JSON, IP, momento. |
@@ -75,6 +77,7 @@ FlightSchedule (RF-01) ──► Route, Aircraft, User (creador)
 | `BaggageStatus` | `REGISTERED`, `CHECKED`, `LOADED`, `DELIVERED`, `LOST` |
 | `BoardingPassStatus` | `ISSUED`, `USED`, `CANCELLED` |
 | `ScheduleStatus` | `DRAFT`, `PUBLISHED` (RF-01) |
+| `ComprobanteTipo` | `PASAJE`, `FACTURA` (RF-05) |
 
 ## Decisiones
 
@@ -95,7 +98,7 @@ FlightSchedule (RF-01) ──► Route, Aircraft, User (creador)
 - **Columnas `date` sin hora.** `weekly_fares.date`, `passengers.birth_date` y
   `booking_passengers.birth_date` no tienen zona: se comparan y formatean por día.
 - **Borrados en cascada solo hacia abajo.** `bookings` → `booking_flights`,
-  `booking_passengers` y `payments` es `Cascade`; `booking_passengers` →
+  `booking_passengers`, `payments` y `comprobantes` es `Cascade`; `booking_passengers` →
   `baggage`/`boarding_passes` también. Hacia arriba es `Restrict`: no se puede borrar
   un vuelo, una tarifa o una aeronave que ya figure en una reserva, y borrar un asiento
   deja la referencia en `SetNull` en lugar de perder el histórico.
@@ -118,6 +121,11 @@ FlightSchedule (RF-01) ──► Route, Aircraft, User (creador)
   `flight_fares`. Así el buscador nunca ve borradores y no necesita filtrarlos.
 - **Códigos de vuelo correlativos (RF-01).** `AG-####` sale de la secuencia
   `flight_code_seq` (no modelada en Prisma; se crea en la migración de RF-01).
+- **Comprobantes emitidos (RF-05).** `comprobantes` no guarda el PDF: registra **que** el
+  comprobante se emitió, con qué pago y cuándo. Se emite al **aprobarse el pago** (no al
+  descargar) y es idempotente por el único `(booking_id, tipo)`, así que reintentar el pago
+  o volver a pedir el PDF no duplica filas. El PDF se arma en el momento de la descarga a
+  partir de la reserva.
 
 ## Seed
 
@@ -127,3 +135,8 @@ a correr sin duplicar. Carga los datos que estaban hardcodeados en los HTML orig
 5 aeropuertos · 3 tarifas (Economy, Economy Premium, Primera Clase) · 3 aeronaves con su mapa de asientos · 5 rutas · 5 vuelos con
 sus precios · 7 tarifas semanales (el calendario de la interfaz) · 3 usuarios · 1 reserva
 de ejemplo (`AG-DEMO01`).
+
+El seed inserta los pagos **directo en la base**, sin pasar por la API, así que no emite
+comprobantes: después de un `db:reset` (o en un entorno nuevo) esa reserva queda sin filas
+en `comprobantes`. Se completan con el backfill de una corrida
+`npx tsx prisma/backfill-comprobantes.ts` (idempotente).

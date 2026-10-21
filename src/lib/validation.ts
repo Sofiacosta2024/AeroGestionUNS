@@ -1,6 +1,4 @@
 import { z } from 'zod';
-import { daysInclusive } from '@/lib/scheduling/calendar';
-import { MAX_VALIDITY_DAYS } from '@/lib/scheduling/config';
 
 const trimmed = (max: number) => z.string().trim().max(max);
 const required = (max: number) => trimmed(max).min(1, 'Este campo es obligatorio');
@@ -183,8 +181,13 @@ const flightBase = z.object({
 // Cambio RF-01: el alta (`POST /api/flights`) ya no usa este schema sino
 // `singleFlightSchema` (codigo y llegada los calcula el sistema). `flightBase` queda
 // para la edicion de un vuelo existente.
+// Cambio US-11B: la edicion tampoco acepta `code` ni `arrivalAt` (los fija el sistema) y
+// rechaza campos desconocidos para que no se ignoren en silencio. Ruta, avion y salida
+// pasan por las reglas de reprogramacion (scheduling/reschedule.ts).
 export const flightUpdateSchema = flightBase
+  .omit({ code: true, arrivalAt: true })
   .partial()
+  .strict()
   .refine((d) => Object.keys(d).length > 0, { message: 'No hay campos para actualizar' });
 
 export const flightStatusUpdateSchema = z.object({
@@ -244,12 +247,9 @@ export const flightScheduleSchema = z
     departureTime: timeOfDay,
     fares: classOffers,
   })
+  // El tope "hoy + 1 año" depende del reloj: lo valida el servicio (scheduling/service.ts).
   .refine((d) => d.validFrom <= d.validTo, {
     message: 'La fecha de fin no puede ser anterior a la de inicio',
-    path: ['validTo'],
-  })
-  .refine((d) => daysInclusive(d.validFrom, d.validTo) <= MAX_VALIDITY_DAYS, {
-    message: `La vigencia no puede superar ${MAX_VALIDITY_DAYS} dias`,
     path: ['validTo'],
   });
 
@@ -270,6 +270,41 @@ export const singleFlightSchema = z.object({
 });
 
 export type SingleFlightInput = z.output<typeof singleFlightSchema>;
+
+/** Reprogramacion de un vuelo publicado (US-11B). La llegada la calcula el sistema. */
+export const flightRescheduleSchema = z.object({
+  routeId: z.string().cuid('Ruta invalida'),
+  aircraftId: z.string().cuid('Avion invalido'),
+  date: calendarDate,
+  departureTime: timeOfDay,
+});
+
+export type RescheduleInput = z.output<typeof flightRescheduleSchema>;
+
+/**
+ * Precio y capacidad por clase de un vuelo publicado (US-11A). Solo se editan las clases
+ * que el vuelo ya tiene; pueden venir todas o solo las que cambian. No usa `money`
+ * porque acepta 0.
+ */
+export const flightFaresUpdateSchema = z.object({
+  fares: z
+    .array(
+      z.object({
+        fareId: z.string().cuid('Clase invalida'),
+        seatCapacity: z.coerce
+          .number()
+          .int('La capacidad debe ser un numero entero')
+          .positive('La capacidad debe ser mayor a 0')
+          .max(1000),
+        price: z.coerce.number().positive('El precio debe ser mayor a 0').max(99_999_999),
+      }),
+    )
+    .min(1, 'No hay clases para actualizar')
+    .max(10)
+    .refine((fares) => new Set(fares.map((f) => f.fareId)).size === fares.length, 'Hay clases repetidas'),
+});
+
+export type FlightFaresUpdateInput = z.output<typeof flightFaresUpdateSchema>;
 
 export const scheduleListQuery = paginationQuery.extend({
   status: z.enum(['DRAFT', 'PUBLISHED']).optional(),

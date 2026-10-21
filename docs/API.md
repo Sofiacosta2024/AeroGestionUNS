@@ -105,7 +105,7 @@ columna `date`.
 | --- | --- | --- | --- |
 | `GET` | `/api/flights` | público | Buscador (alimenta `/vuelos`). |
 | `POST` | `/api/flights` | `MOSTRADOR` | Alta de un vuelo puntual con las reglas de RF-01 (ver abajo). |
-| `GET` `PATCH` `DELETE` | `/api/flights/:id` | público / `MOSTRADOR` / `ADMIN` | Detalle, edición, baja. |
+| `GET` `PATCH` `DELETE` | `/api/flights/:id` | público / `MOSTRADOR` / `ADMIN` | Detalle, edición, baja. *Cambio US-11B:* `PATCH` ya no acepta `code` ni `arrivalAt`, rechaza campos desconocidos y, si cambian `routeId`, `aircraftId` o `departureAt`, aplica las reglas de [reprogramación](#reprogramación-de-vuelos-us-11b). |
 | `GET` `POST` `DELETE` | `/api/flights/:id/fares` | público / `MOSTRADOR` / `MOSTRADOR` | Precios del vuelo, alta, quitar. |
 | `PATCH` | `/api/flights/:id/status` | `MOSTRADOR` | Cambio de estado operativo. |
 
@@ -205,7 +205,8 @@ nunca muestra borradores.
 
 Reglas (se validan al chequear, al guardar y al publicar):
 
-- No hay salidas en el pasado.
+- No hay salidas en el pasado: un `validFrom` anterior a hoy, o un vuelo de hoy a una hora
+  que ya pasó, responde `422`.
 - Desde un mismo aeropuerto, dos salidas no pueden estar a menos de
   `MIN_DEPARTURE_GAP_MINUTES` minutos (20 por defecto). Desde aeropuertos distintos sí
   pueden coincidir.
@@ -215,12 +216,14 @@ Reglas (se validan al chequear, al guardar y al publicar):
 - Cada clase (tarifa activa) se vende con al menos 1 asiento y su precio. El tope es por
   **cabina**: Economy + Economy Premium no superan los asientos de la cabina Economy del
   avión; Primera Clase no supera los de su cabina.
-- La vigencia es de un año como máximo.
+- `validTo` no puede pasar de hoy + 1 año, inclusive (por ejemplo, hoy 17/10/2026 permite
+  hasta el 17/10/2027). Si pasa, responde `422` con el detalle en `validTo`.
 
-Un borrador no reserva horario: si mientras tanto otro vuelo ocupa la franja, publicar
-responde `409`. Los conflictos vuelven en `error.details` con `kind`
-(`PAST_DEPARTURE`, `DEPARTURE_GAP`, `AIRCRAFT_BUSY`), `date`, `conflictingFlightCode` y
-`message`. Los datos inválidos (clases faltantes, asientos de más) responden `422`.
+Un choque responde `409` con el mensaje «Ya existe un vuelo o cronograma que se superpone con
+el ingresado». Un borrador no reserva horario: si mientras tanto otro vuelo ocupa la franja,
+publicar también responde `409`. Los conflictos vuelven en `error.details` con `kind`
+(`DEPARTURE_GAP`, `AIRCRAFT_BUSY`), `date`, `conflictingFlightCode` y `message`. Los datos
+inválidos (clases faltantes, asientos de más, fechas fuera de rango) responden `422`.
 
 `POST /api/flight-schedules/check` responde, sin guardar:
 
@@ -237,6 +240,118 @@ responde `409`. Los conflictos vuelven en `error.details` con `kind`
   "canSave": true
 }
 ```
+
+## Reprogramación de vuelos (US-11B)
+
+Cambia la fecha, la hora de salida, la ruta o el avión de **un** vuelo publicado. La
+llegada se recalcula con la duración de la ruta. Pantalla: `/admin/vuelos/:id/reprogramar`,
+desde la acción «Reprogramar» de la planilla del día.
+
+| Método | Ruta | Rol | Descripción |
+| --- | --- | --- | --- |
+| `POST` | `/api/admin/flights/:id/itinerary/check` | `ADMIN` | Chequeo en vivo. No guarda nada. |
+| `PATCH` | `/api/admin/flights/:id/itinerary` | `ADMIN` | Guarda la reprogramación. |
+
+Los dos reciben el itinerario completo:
+
+```json
+{ "routeId": "...", "aircraftId": "...", "date": "2026-10-21", "departureTime": "10:00" }
+```
+
+Reglas:
+
+- Solo vuelos `SCHEDULED` o `DELAYED` que todavía no salieron (si no, `409`).
+- Las mismas del alta, sin contar al propio vuelo: no al pasado, no más allá de hoy + 1
+  año, margen entre salidas del mismo aeropuerto y rotación del avión.
+- La ruta solo cambia si el vuelo no tiene reservas activas (pagadas, confirmadas o
+  pendientes con el bloqueo vigente).
+- El avión solo cambia si no hay asientos asignados ni bloqueados. Si lo ofrecido en una
+  cabina no entra en el avión nuevo, cada clase de esa cabina se reduce en la misma
+  proporción sin bajar de lo vendido (ej. 100 Economy + 44 Economy Premium en 144 → 75 + 33
+  en 108). Si lo vendido no entra, responde `422`.
+
+Respuestas de error:
+
+- Avión ocupado: `409` con «La aeronave seleccionada ya tiene un vuelo asignado entre las
+  HH:MM y las HH:MM hs.» (horario del otro vuelo).
+- Salida a menos del margen de otra del mismo aeropuerto: `409` con «Ya existe un vuelo o
+  cronograma que se superpone con el ingresado».
+- Ruta o avión que no se pueden cambiar: `422` con el motivo en `details`.
+- Sin cambios: `400`.
+
+`check` responde, sin guardar:
+
+```json
+{
+  "changed": true,
+  "departureAt": "2026-10-21T13:00:00.000Z",
+  "arrivalAt": "2026-10-21T14:10:00.000Z",
+  "arrivalTime": "11:10",
+  "arrivalDate": "2026-10-21",
+  "durationMinutes": 70,
+  "affectedPassengers": 2,
+  "classes": [ { "fareId": "...", "name": "Economy", "sold": 2, "capacity": 111, "newCapacity": 111 } ],
+  "conflicts": [],
+  "issues": [],
+  "canSave": true
+}
+```
+
+## Tarifas y capacidad por clase (US-11A)
+
+Cambia el precio y la capacidad de las clases de **un** vuelo publicado. Pantalla:
+`/admin/vuelos/:id/tarifas`, desde la acción «Editar tarifas» de la planilla del día. La US
+lo pide como `PATCH /api/v1/admin/vuelos/{id}/tarifas`. Se implementó con la misma forma que
+el resto de los endpoints de administración.
+
+| Método | Ruta | Rol | Descripción |
+| --- | --- | --- | --- |
+| `PATCH` | `/api/admin/flights/:id/fares` | `ADMIN` | Guarda precio y capacidad por clase. |
+
+Recibe solo las clases que cambian, o todas:
+
+```json
+{ "fares": [ { "fareId": "<Economy>", "seatCapacity": 126, "price": 64200 } ] }
+```
+
+Reglas:
+
+- Solo vuelos `SCHEDULED` o `DELAYED` que todavía no salieron (si no, `409`). Es la misma
+  condición que la reprogramación.
+- Capacidad entera y precio mayores a 0 (hasta 2 decimales). Si no, `422`.
+- Solo se editan las clases que el vuelo ya tiene. Una clase ajena responde `422`.
+- La capacidad no baja de lo vendido o reservado en la clase (`seat_capacity −
+  available_seats`, que incluye los bloqueos de compra vigentes). Los bloqueos vencidos se
+  liberan antes de calcular.
+- Tope por cabina, igual que en el alta: Economy + Economy Premium ≤ asientos Economy del
+  avión y Primera ≤ los suyos. Solo se controla si la cabina **sube**: un vuelo anterior a
+  RF-01 que ya se pasa del tope puede bajar o quedar igual.
+- Lo vendido conserva su precio (`booking_flights.price` y `bookings.total_amount` se
+  congelan al reservar). El precio nuevo rige para las ventas que vienen y el buscador lo
+  muestra enseguida.
+- `available_seats` se recalcula como capacidad nueva − vendidos. El vuelo y sus clases
+  quedan bloqueados durante el guardado, así una compra simultánea (RF-03) espera.
+
+Respuestas de error:
+
+- Capacidad menor a lo vendido: `422` con «No se puede reducir la capacidad a X asientos
+  porque ya existen Y pasajes vendidos en esta clase.». El `campo` del detalle es
+  `fares.<fareId>.seatCapacity`.
+- Cabina excedida: `422` con el mismo mensaje que el alta, en `campo` `fares`.
+- Sin cambios: `400`.
+
+Responde el vuelo como quedó (`flight`, con `classes` de `price`, `capacity` y `sold`) y
+`changes`, con el antes y el después de cada clase modificada, que es lo que se audita
+(`UPDATE_FARES`).
+
+*Pendiente para el equipo:* el `POST /api/flights/:id/fares` anterior (rol `MOSTRADOR`)
+sigue editando `price` y `available_seats` sin estas reglas. Mostrador no debería poder
+editar tarifas.
+
+Al guardar también se actualiza la salida copiada en `booking_flights.departure_at` y queda
+en `audit_logs` (`action = RESCHEDULE`) el itinerario anterior y el nuevo, los pasajeros
+afectados y las clases cuya capacidad se ajustó. La respuesta trae lo mismo. El aviso por
+mail a los pasajeros es de RF-06.
 
 ## Pasajeros y reservas
 
@@ -319,6 +434,26 @@ siendo exclusivo de `ADMIN`). Cualquier otro rol recibe `403`.
 | `GET` | `/api/v1/admin/reservas/:bookingCode/historial` | `MOSTRADOR` | Últimos 20 eventos de auditoría de la reserva. |
 | `GET` | `/api/v1/admin/reservas/:bookingCode/comprobantes?type=PASAJE\|FACTURA` | `MOSTRADOR` | Re-emisión manual del comprobante en PDF. |
 | `PATCH` | `/api/v1/admin/reservas/:bookingCode/pasajeros/:passengerId` | `MOSTRADOR` | Edición de los datos de identificación del pasajero (nombre, apellido, tipo/número de documento, fecha de nacimiento). `passengerId` es el registro dentro de la reserva (`BookingPassenger`). Deja traza en auditoría (`PASSENGER_IDENT_UPDATED`). |
+
+## Comprobantes (RF-05)
+
+| Método | Ruta | Rol | Descripción |
+| --- | --- | --- | --- |
+| `GET` | `/api/v1/reservas/:codigo/comprobantes/pasaje` | dueño o `MOSTRADOR` | Descarga binaria del pasaje en PDF. |
+| `GET` | `/api/v1/reservas/:codigo/comprobantes/factura` | dueño o `MOSTRADOR` | Descarga binaria de la factura en PDF. |
+
+Responden `application/pdf` con `content-disposition: attachment`, así que el navegador
+descarga el archivo en lugar de mostrarlo; el nombre (`pasaje-AG-XXXXXX.pdf`,
+`factura-AG-XXXXXX.pdf`) viaja en el header.
+
+A diferencia de `GET /api/bookings/:code`, estas rutas **no se pueden redactar** (un PDF no
+tiene versión pública): exigen sesión, ser el dueño o de Operations (`403` en caso
+contrario) y además un **pago aprobado** (`409` si la reserva todavía no se cobró). `404` si
+el código no existe. El presupuesto de respuesta es **menos de 5 s** (RF-05).
+
+El PDF se arma en el momento de la descarga a partir de la reserva (`toTravelDocuments` →
+`buildPassPdf` / `buildInvoicePdf`, ver `src/lib/pdf/documents.ts`). La **emisión** del
+comprobante se registra aparte, al aprobarse el pago, en la tabla `comprobantes`.
 
 ## Administración
 

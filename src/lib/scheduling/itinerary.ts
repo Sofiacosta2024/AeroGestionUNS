@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { localDayRangeUtc } from '@/lib/dates';
 import { prisma } from '@/lib/prisma';
 import { localTimeOf } from './calendar';
+import { isReschedulable } from './reschedule';
 
 /**
  * Itinerario = planilla del dia (RF-01): todos los vuelos que salen en un dia local,
@@ -16,12 +17,14 @@ const itineraryInclude = {
 
 type ItineraryFlight = Prisma.FlightGetPayload<{ include: typeof itineraryInclude }>;
 
-function serializeItineraryFlight(f: ItineraryFlight) {
+function serializeItineraryFlight(f: ItineraryFlight, now: Date) {
   return {
     id: f.id,
     code: f.code,
     status: f.status,
     scheduleId: f.scheduleId,
+    /** Si se puede reprogramar desde la planilla (US-11B). */
+    reschedulable: isReschedulable(f, now),
     departureAt: f.departureAt,
     arrivalAt: f.arrivalAt,
     departureTime: localTimeOf(f.departureAt),
@@ -54,5 +57,6 @@ export async function getItinerary(date: string): Promise<{ date: string; flight
     include: itineraryInclude,
     orderBy: { departureAt: 'asc' },
   });
-  return { date, flights: flights.map(serializeItineraryFlight) };
+  const now = new Date();
+  return { date, flights: flights.map((f) => serializeItineraryFlight(f, now)) };
 }

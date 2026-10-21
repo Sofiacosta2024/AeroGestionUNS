@@ -1,44 +1,37 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { ScheduleEvaluation } from '@/lib/scheduling/service';
-import type { ScheduleInput } from '@/lib/validation';
-import { ApiRequestError, apiRequest, detailMessages } from '../../api-client';
+import { ApiRequestError, apiRequest, detailMessages } from './api-client';
 
-export type CheckState = {
+export type CheckState<T> = {
   loading: boolean;
-  result: ScheduleEvaluation | null;
+  result: T | null;
   /** Errores de validacion de la entrada (por ejemplo, ninguna clase cargada). */
   errors: string[];
 };
 
-const IDLE: CheckState = { loading: false, result: null, errors: [] };
 const DEBOUNCE_MS = 400;
 
 /**
- * Chequeo en vivo del cronograma (RF-01): cada vez que cambia el pedido, espera a que el
- * admin deje de tipear y consulta `/api/flight-schedules/check`. Cancela la consulta
- * anterior para que nunca pise un resultado mas nuevo.
+ * Chequeo en vivo de un formulario del panel: cada vez que cambia el pedido, espera a que
+ * el admin deje de tipear y lo manda por POST a `url`. Cancela la consulta anterior para
+ * que nunca pise un resultado mas nuevo. Lo usan el alta (RF-01) y la reprogramacion
+ * (US-11B); antes era `useScheduleCheck`, solo para el alta.
  */
-export function useScheduleCheck(input: ScheduleInput | null): CheckState {
-  const [state, setState] = useState<CheckState>(IDLE);
+export function useLiveCheck<T>(url: string, input: unknown): CheckState<T> {
+  const [state, setState] = useState<CheckState<T>>({ loading: false, result: null, errors: [] });
   const key = input ? JSON.stringify(input) : null;
 
   useEffect(() => {
     if (!key) {
-      setState(IDLE);
+      setState({ loading: false, result: null, errors: [] });
       return;
     }
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       setState((s) => ({ ...s, loading: true }));
       try {
-        const result = await apiRequest<ScheduleEvaluation>(
-          'POST',
-          '/api/flight-schedules/check',
-          JSON.parse(key),
-          controller.signal,
-        );
+        const result = await apiRequest<T>('POST', url, JSON.parse(key), controller.signal);
         setState({ loading: false, result, errors: [] });
       } catch (err) {
         if (controller.signal.aborted) return;
@@ -47,7 +40,7 @@ export function useScheduleCheck(input: ScheduleInput | null): CheckState {
             ? detailMessages(err.details).length > 0
               ? detailMessages(err.details)
               : [err.message]
-            : ['No se pudo verificar el cronograma'];
+            : ['No se pudo verificar la disponibilidad'];
         setState({ loading: false, result: null, errors });
       }
     }, DEBOUNCE_MS);
@@ -56,7 +49,7 @@ export function useScheduleCheck(input: ScheduleInput | null): CheckState {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [key]);
+  }, [url, key]);
 
   return state;
 }

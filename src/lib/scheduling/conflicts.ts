@@ -24,24 +24,32 @@ export type ScheduledFlight = {
   arrivalAt: Date;
 };
 
-export type ConflictKind = 'PAST_DEPARTURE' | 'DEPARTURE_GAP' | 'AIRCRAFT_BUSY';
+// Una salida ya pasada no es un choque con otro vuelo: se informa como dato a corregir
+// en el servicio (antes era PAST_DEPARTURE y con BUG-02 hubiera mostrado OVERLAP_MESSAGE).
+export type ConflictKind = 'DEPARTURE_GAP' | 'AIRCRAFT_BUSY';
 
 export type ScheduleConflict = {
   kind: ConflictKind;
   /** Fecha local del vuelo planificado que choca. */
   date: string;
-  /** Vuelo existente con el que choca (no aplica a PAST_DEPARTURE). */
-  conflictingFlightCode?: string;
+  /** Vuelo existente con el que choca. */
+  conflictingFlightCode: string;
+  /** Horario del vuelo con el que choca (para el mensaje de la US-11B). */
+  conflictingDepartureAt: Date;
+  conflictingArrivalAt: Date;
 };
 
-const MINUTE_MS = 60_000;
-
-/** Salidas que ya pasaron (o salen justo ahora): no se pueden programar. */
-export function findPastDepartures(planned: readonly PlannedFlight[], now: Date): ScheduleConflict[] {
-  return planned
-    .filter((p) => p.departureAt.getTime() <= now.getTime())
-    .map((p) => ({ kind: 'PAST_DEPARTURE', date: p.date }));
+function conflictWith(kind: ConflictKind, p: PlannedFlight, f: ScheduledFlight): ScheduleConflict {
+  return {
+    kind,
+    date: p.date,
+    conflictingFlightCode: f.code,
+    conflictingDepartureAt: f.departureAt,
+    conflictingArrivalAt: f.arrivalAt,
+  };
 }
+
+const MINUTE_MS = 60_000;
 
 /**
  * Salidas a menos de `gapMinutes` de otra salida del mismo aeropuerto de origen.
@@ -56,7 +64,7 @@ export function findDepartureGapConflicts(
   return planned.flatMap((p) =>
     sameOriginFlights
       .filter((f) => Math.abs(f.departureAt.getTime() - p.departureAt.getTime()) < gapMs)
-      .map((f) => ({ kind: 'DEPARTURE_GAP' as const, date: p.date, conflictingFlightCode: f.code })),
+      .map((f) => conflictWith('DEPARTURE_GAP', p, f)),
   );
 }
 
@@ -80,12 +88,18 @@ export function findAircraftOverlaps(
           p.departureAt.getTime() < f.arrivalAt.getTime() + turnaroundMs &&
           f.departureAt.getTime() < p.arrivalAt.getTime() + turnaroundMs,
       )
-      .map((f) => ({ kind: 'AIRCRAFT_BUSY' as const, date: p.date, conflictingFlightCode: f.code })),
+      .map((f) => conflictWith('AIRCRAFT_BUSY', p, f)),
   );
 }
 
+/**
+ * Mensaje unico que ve el admin ante cualquier choque de horarios (BUG-02 de la demo 1:
+ * una lista por vuelo quedaba larguisima en un cronograma). El detalle por conflicto
+ * (`describeConflict`) sigue viajando en la API.
+ */
+export const OVERLAP_MESSAGE = 'Ya existe un vuelo o cronograma que se superpone con el ingresado';
+
 const CONFLICT_MESSAGES: Record<ConflictKind, (c: ScheduleConflict, rules: SchedulingRules) => string> = {
-  PAST_DEPARTURE: (c) => `${c.date}: la salida ya paso`,
   DEPARTURE_GAP: (c, rules) =>
     `${c.date}: sale a menos de ${rules.gapMinutes} min del vuelo ${c.conflictingFlightCode} desde el mismo aeropuerto`,
   AIRCRAFT_BUSY: (c, rules) =>
