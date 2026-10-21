@@ -158,3 +158,12 @@ docs/
 - **Auditoría**: toda escritura registra quién y qué en `audit_logs`.
 - **Acceso demo**: existe para demos y desarrollo. Es un bypass de autenticación, por eso
   `DEMO_MODE="false"` lo desactiva por completo (botón oculto y endpoint en `404`).
+
+
+## US-08 y US-13 - Venta en Mostrador y envío de comprobantes
+
+Terminal `/mostrador` para MOSTRADOR/ADMIN, venta transaccional e idempotente y despacho asincrónico de pasaje/factura con outbox PostgreSQL y Redis/BullMQ. Preparación, configuración, contratos y pruebas: [docs/US08-US13.md](docs/US08-US13.md). Requiere aplicar la migración nueva y mantener `npm run worker:receipts` junto a Next.js. El envío requiere configurar Resend; el webhook permite registrar entrega y rebote.
+
+## Despliegue de US-08 y US-13
+
+La web se publica desde `main` en [unsaerogestion.vercel.app](https://unsaerogestion.vercel.app). Para la demo, Redis y el worker de comprobantes se ejecutan en una computadora local, conectados a la misma base que Vercel. Los correos requieren que ambos procesos sigan encendidos. Ver [configuración de la demo en producción](docs/DESPLIEGUE-US08-US13.md).

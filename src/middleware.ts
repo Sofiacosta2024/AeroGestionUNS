@@ -1,7 +1,7 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 
-const isPublic = createRouteMatcher([
+const isPublicPage = createRouteMatcher([
   '/',
   '/vuelos(.*)',
   '/pago(.*)',
@@ -17,18 +17,23 @@ const isPublic = createRouteMatcher([
   '/api/v1/reservas/consulta/pasaje',
   '/api/v1/reservas/consulta/factura',
   '/api/v1/reservas/consulta/reprogramar',
-  '/api/webhooks(.*)',
-  '/api/flights(.*)',
-  '/api/bookings(.*)',
-  '/api/v1/reservas(.*)',
+  '/api/webhooks/resend',
   '/api/health',
 ]);
+const isFlightRead = createRouteMatcher(['/api/flights', '/api/flights/([^/]+)/seats']);
+/** Las lecturas comerciales son públicas; no habilitar por prefijo APIs de escritura. */
+function isPublic(req: NextRequest) {
+  if (isPublicPage(req)) return true;
+  if ((req.method ?? 'GET') !== 'GET') return false;
+  if (isFlightRead(req)) return true;
+  return req.nextUrl.pathname === '/api/bookings' && /^[A-Z]{2}-[A-Z0-9]{4,10}$/i.test(req.nextUrl.searchParams.get('search')?.trim() ?? '');
+}
 const isAdmin = createRouteMatcher([
   '/admin(.*)',
   '/api/admin(.*)',
   '/api/v1/admin(.*)',
 ]);
-const isMostrador = createRouteMatcher(['/mostrador(.*)', '/api/mostrador(.*)']);
+const isMostrador = createRouteMatcher(['/mostrador(.*)', '/api/mostrador(.*)', '/api/v1/mostrador(.*)']);
 // US-14C: la consola de busqueda y gestion de reservas acepta MOSTRADOR ademas de ADMIN
 // (paginas y APIs internas). El resto del panel sigue siendo exclusivo de ADMIN.
 const isReservasConsole = createRouteMatcher([
@@ -41,12 +46,19 @@ const isReservasConsole = createRouteMatcher([
 // el servidor ni Clerk.
 export { isPublic, isAdmin, isMostrador, isReservasConsole };
 
+function denyAccess(req: NextRequest) {
+  return req.nextUrl.pathname.startsWith('/api/')
+    ? NextResponse.json({ ok: false, error: { code: 'FORBIDDEN', message: 'No tiene permisos para esta operación' } }, { status: 403 })
+    : NextResponse.redirect(new URL('/', req.url));
+}
 
 export default clerkMiddleware(async (auth, req) => {
   if (isPublic(req)) return;
 
   const { userId, sessionClaims, redirectToSignIn } = await auth();
-  if (!userId) return redirectToSignIn({ returnBackUrl: req.url });
+  if (!userId) return req.nextUrl.pathname.startsWith('/api/')
+    ? NextResponse.json({ ok: false, error: { code: 'UNAUTHORIZED', message: 'No autenticado' } }, { status: 401 })
+    : redirectToSignIn({ returnBackUrl: req.url });
 
   const role = sessionClaims?.metadata?.role ?? 'PASAJERO';
 
@@ -54,11 +66,11 @@ export default clerkMiddleware(async (auth, req) => {
     // US-14C: la unica excepcion a ADMIN es la consola de reservas para MOSTRADOR.
     const isReservasForMostrador = role === 'MOSTRADOR' && isReservasConsole(req);
     if (!isReservasForMostrador) {
-      return NextResponse.redirect(new URL('/', req.url));
+      return denyAccess(req);
     }
   }
   if (isMostrador(req) && role !== 'MOSTRADOR' && role !== 'ADMIN') {
-    return NextResponse.redirect(new URL('/', req.url));
+    return denyAccess(req);
   }
 });
 

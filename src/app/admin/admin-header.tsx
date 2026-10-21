@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useClerk } from '@clerk/nextjs';
 
 const LINKS = [
+  { href: '/mostrador', label: 'Venta en Mostrador' },
   { href: '/admin/vuelos/nuevo', label: 'Alta de vuelos' },
   { href: '/admin/itinerario', label: 'Planilla del día' },
   { href: '/admin/reservas', label: 'Gestión de reservas' },

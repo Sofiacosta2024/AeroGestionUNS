@@ -154,3 +154,8 @@ pooler de Neon porque se libera al terminar la transacción.
   lo avisa con `pagination.truncated`.
 - **Auditoría sin transacción**: `audit()` se ejecuta después del `await` principal y
   nunca hace fallar la operación de negocio si la escritura de auditoría falla.
+
+
+## Venta presencial y correo de comprobantes (US-08 / US-13)
+
+Venta, cupos/asientos, pago, comprobantes y outbox se confirman en una sola transacción Serializable con reintentos completos. El worker independiente publica IDs en Redis/BullMQ y reclama leases en PostgreSQL. La compra no espera al proveedor; claves estables y PDFs deterministas evitan duplicados al reintentar. El middleware hace públicas sólo rutas explícitas y lecturas comerciales por GET; los handlers también controlan autorización. Ver [US08-US13.md](US08-US13.md).

@@ -1,10 +1,9 @@
 import { Prisma } from "@prisma/client";
 import { ApiError, handler, ok } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
-import { audit } from "@/lib/audit";
 import { bookingInclude, canViewBookingPii } from "@/lib/bookings";
-import { toReceipt } from "@/lib/checkout";
-import { sendReceipt } from "@/lib/payment-email";
+import { enqueueReceipt, receiptSnapshot } from "@/lib/email/outbox";
+import { queuedEmail } from "@/lib/email/types";
 import { prisma } from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ code: string }> };
@@ -43,18 +42,9 @@ export const POST = handler(async (_req: Request, ctx: Ctx) => {
         entityId: payment.id,
       },
     });
-    return { booking, payment, attemptId: attempt.id.toString() };
-  });
-  const email = await sendReceipt(
-    toReceipt(result.booking),
-    `payment-${result.payment.id}-resend-${result.attemptId}`,
-  );
-  await audit({
-    userId: user.id,
-    action: "PAYMENT_EMAIL",
-    entity: "Payment",
-    entityId: result.payment.id,
-    metadata: email,
-  });
-  return ok({ email });
+    return enqueueReceipt(tx, { bookingId: booking.id, paymentId: payment.id,
+      dedupeKey: `payment-${payment.id}-resend-${attempt.id}`, recipient: booking.contactEmail,
+      snapshot: receiptSnapshot(booking) });
+  }, { timeout: 60000, maxWait: 15000 });
+  return ok({ email: queuedEmail(result.dispatchId) }, 202);
 });

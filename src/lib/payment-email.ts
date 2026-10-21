@@ -1,4 +1,5 @@
 import { formatArs, formatFullDate, formatTime } from './format';
+import { receiptSender } from './email/config';
 
 export type Receipt = {
   code: string;
@@ -17,7 +18,8 @@ export type Receipt = {
   passengers: { name: string; seat: string }[];
 };
 export type EmailResult = {
-  status: 'accepted' | 'failed';
+  status: 'accepted' | 'failed' | 'queued' | 'delivered';
+  dispatchId?: string;
   message: string;
   id?: string;
 };
@@ -63,7 +65,8 @@ export async function sendReceipt(
   } = {},
 ): Promise<EmailResult> {
   const apiKey = options.apiKey ?? process.env.RESEND_API_KEY;
-  if (!apiKey)
+  const from = receiptSender(options.from);
+  if (!apiKey || !from)
     return {
       status: 'failed',
       message:
@@ -82,10 +85,7 @@ export async function sendReceipt(
           'Idempotency-Key': idempotencyKey,
         },
         body: JSON.stringify({
-          from:
-            options.from ??
-            process.env.RESEND_FROM ??
-            'AeroGestión UNS <onboarding@resend.dev>',
+          from,
           to: [receipt.email],
           subject: `Reserva ${receipt.code} — Pago simulado confirmado`,
           ...content,

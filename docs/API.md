@@ -465,3 +465,8 @@ comprobante se registra aparte, al aprobarse el pago, en la tabla `comprobantes`
 | `GET` | `/api/audit-logs` | `ADMIN` | Auditoría, con filtros `entity`, `action`, `userId`, `from`, `to`. |
 
 Nunca se devuelven `passwordHash` ni `tokenHash` en ninguna respuesta.
+
+
+## US-08 / US-13
+
+Se agregan `POST /api/v1/mostrador/cotizacion`, `POST /api/v1/mostrador/ventas` (MOSTRADOR o ADMIN) y `POST /api/webhooks/resend` (firma Svix). El pago web y su reenvío ahora devuelven email `queued`; reenvío HTTP 202. Contratos y errores en [US08-US13.md](US08-US13.md).

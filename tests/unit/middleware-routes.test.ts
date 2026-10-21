@@ -41,8 +41,11 @@ test('protegidas: APIs internas de reservas, pagos y pasajes', () => {
   assert.equal(isPublic(req('/api/bookings/AG-7F3K9Q/boarding-passes')), false);
 });
 
-test('protegidas: otros endpoints internos (flights, passengers, users, etc.)', () => {
-  assert.equal(isPublic(req('/api/flights')), false);
+test('buscador público por GET; APIs internas y escrituras siguen protegidas', () => {
+  assert.equal(isPublic(req('/api/flights')), true);
+  assert.equal(isPublic(req('/api/flights/f1/seats')), true);
+  assert.equal(isPublic({ url: 'http://localhost/api/flights', nextUrl: new URL('http://localhost/api/flights'), method: 'POST' } as never), false);
+  assert.equal(isPublic(req('/api/flights/f1/status')), false);
   assert.equal(isPublic(req('/api/passengers')), false);
   assert.equal(isPublic(req('/api/users')), false);
   assert.equal(isPublic(req('/api/fares')), false);

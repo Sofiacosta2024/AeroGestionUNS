@@ -1,4 +1,5 @@
 import type { BookingForDocuments } from './bookings';
+import { commercialCabin } from './cabin';
 
 /**
  * Documentos de viaje que se descargan desde /confirmación/[code]:
@@ -65,14 +66,14 @@ export function toTravelDocuments(booking: BookingForDocuments): TravelDocuments
     (a, b) => +a.departureAt - +b.departureAt,
   );
 
-  const passes: TravelPass[] = flights.flatMap(({ flight }) =>
+  const passes: TravelPass[] = flights.flatMap(({ flight, fare }) =>
     booking.passengers.map((p) => ({
       bookingCode: booking.bookingCode,
       passengerName: `${p.firstName} ${p.lastName}`.trim(),
       documentType: p.documentType,
       documentNumber: p.documentNumber,
       seat: p.seat ? `${p.seat.rowNumber}${p.seat.columnLetter}` : 'Sin asignar',
-      cabinClass: cabinLabel(p.seat?.cabinClass ?? booking.cabinClass),
+      cabinClass: cabinLabel(fare?.cabinClass ? commercialCabin(fare) : (p.seat?.cabinClass ?? booking.cabinClass)),
       flightCode: flight.code,
       origin: {
         code: flight.route.originAirport.iataCode,
@@ -89,19 +90,14 @@ export function toTravelDocuments(booking: BookingForDocuments): TravelDocuments
 
   const total = Number(booking.totalAmount);
   const taxes = Math.round((total * IVA_RATE) / (1 + IVA_RATE));
-  const base = total - taxes;
-  const seatSurchargeApplies = booking.passengers.some(
-    (p) => p.seat?.cabinClass === 'ECONOMY',
-  );
+  const seatSelectionGross = booking.flights.reduce((sum, f) => sum + Number(f.seatSelectionAmount ?? 0), 0);
+  const seatSelectionNet = Math.round((seatSelectionGross / (1 + IVA_RATE)) * 100) / 100;
+  const base = Math.round((total - taxes - seatSelectionNet) * 100) / 100;
   const payment = booking.payments.find((p) => p.status === 'APPROVED');
   const buyer = booking.passengers[0];
-
   const lines: InvoiceLine[] = [{ label: 'Tarifa base', amount: base }];
-  if (seatSurchargeApplies)
-    lines.push({
-      label: 'Cargo por elección de asiento (Economy)',
-      amount: 0,
-    });
+  if (seatSelectionGross > 0)
+    lines.push({ label: 'Cargo por elección de asiento (Economy)', amount: seatSelectionNet });
   lines.push({ label: 'Impuestos (IVA 21%)', amount: taxes });
 
   const invoice: InvoiceDocument = {

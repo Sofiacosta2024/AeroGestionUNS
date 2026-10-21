@@ -83,7 +83,7 @@ export default function LoginForm() {
             <input type="checkbox" checked={rememberEmail} onChange={(event) => setRememberEmail(event.target.checked)} className="h-4 w-4 rounded accent-[#E11D48]" />
             Recordar correo
           </label>
-          <Link href="/login/clerk" className="font-semibold text-[#E11D48] hover:underline">¿Olvidó su clave?</Link>
+          <Link href="/login/recuperar-clave" className="font-semibold text-[#E11D48] hover:underline">¿Olvidó su clave?</Link>
         </div>
         {error && <p role="alert" className="rounded-lg bg-pink-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         <button type="submit" disabled={pending} className="flex w-full items-center justify-center gap-3 rounded-xl bg-[#2E1065] py-4 font-bold text-white shadow-lg shadow-purple-950/20 transition-colors hover:bg-[#431b80] disabled:cursor-wait disabled:opacity-60">

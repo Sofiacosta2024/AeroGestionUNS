@@ -27,14 +27,13 @@ export const bookingInclude = {
 export type BookingWithRelations = Prisma.BookingGetPayload<{ include: typeof bookingInclude }>;
 
 /**
- * Include minimo para armar los comprobantes PDF (US-05). Deja afuera `aircraft`,
- * `fare`, `baggage` y `boardingPass`, que el pasaje y la factura no usan: Prisma
- * consulta cada relacion por separado, asi que esto baja de 13 a 9 consultas por
- * descarga (medido: ~1,4 s menos contra la base remota).
+ * Include para los comprobantes PDF. Omite aircraft, baggage y boardingPass.
+ * Incluye la tarifa para distinguir Economy Premium de su cabina física Economy.
  */
 export const comprobanteInclude = {
   flights: {
     include: {
+      fare: true,
       flight: {
         include: {
           route: { include: { originAirport: true, destinationAirport: true } },

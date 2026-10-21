@@ -4,6 +4,9 @@ import type { z } from 'zod';
 import type { AuthUser } from './auth';
 import { ApiError } from './api';
 import { bookingInclude, canViewBookingPii } from './bookings';
+import { emitirComprobantes } from './comprobante-emission';
+import { enqueueReceipt, receiptSnapshot } from './email/outbox';
+import { queuedEmail } from './email/types';
 import { mockPaymentStatus } from './mock-payment';
 import type { paymentSchema } from './validation';
 
@@ -27,24 +30,19 @@ export async function settlePayment(
   if (booking.status === 'CANCELLED' || booking.status === 'NO_SHOW')
     throw ApiError.conflict('Esta reserva no admite pagos');
 
-  // RF-03: Si la reserva temporal de 5 minutos expiró, se cancela y se liberan las butacas
+  // La limpieza se confirma en una transacción separada antes de cobrar.
+  // Nunca restaurar cupos aquí y luego arrojar: el rollback desharía la limpieza.
   if (booking.status === 'PENDING' && booking.expiresAt && booking.expiresAt < new Date()) {
-    await tx.seatLock.deleteMany({ where: { bookingId: booking.id } });
-    await tx.booking.update({
-      where: { id: booking.id },
-      data: { status: 'CANCELLED' },
-    });
-    for (const bf of booking.flights) {
-      await tx.flightFare.updateMany({
-        where: { flightId: bf.flightId, fareId: bf.fareId },
-        data: { availableSeats: { increment: booking.passengersCount } },
-      });
-    }
-    throw ApiError.conflict('El tiempo de reserva de 5 minutos ha expirado. Los asientos fueron liberados.');
+    throw ApiError.conflict('El tiempo de reserva de 5 minutos ha expirado. Volvé a seleccionar tus asientos.');
   }
 
   const existing = booking.payments.find((p) => p.status === 'APPROVED');
-  if (existing) return { payment: existing, reused: true, booking };
+  if (existing) {
+    await emitirComprobantes(tx, existing, booking.id);
+    const { dispatchId } = await enqueueReceipt(tx, { paymentId: existing.id, bookingId: booking.id,
+      dedupeKey: `payment-${existing.id}`, recipient: booking.contactEmail, snapshot: receiptSnapshot(booking) });
+    return { payment: existing, reused: true, booking, email: queuedEmail(dispatchId) };
+  }
   if (!['PENDING', 'CONFIRMED'].includes(booking.status))
     throw ApiError.conflict('Esta reserva no admite pagos');
   if (booking.passengers.length !== booking.passengersCount)
@@ -70,16 +68,19 @@ export async function settlePayment(
   if (status === 'APPROVED')
     await tx.booking.update({
       where: { id: booking.id },
-      data: { status: 'PAID', contactEmail: body.contactEmail },
+      data: { status: 'PAID', contactEmail: body.contactEmail, expiresAt: null },
     });
-  return {
-    payment,
-    reused: false,
-    booking: {
-      ...booking,
-      contactEmail:
-        status === 'APPROVED' ? body.contactEmail : booking.contactEmail,
-      payments: [...booking.payments, payment],
-    },
+  const updatedBooking = {
+    ...booking, status: status === 'APPROVED' ? 'PAID' as const : booking.status,
+    contactEmail: status === 'APPROVED' ? body.contactEmail : booking.contactEmail,
+    payments: [...booking.payments.filter(p => p.id !== payment.id), payment],
   };
+  let email = null;
+  if (status === 'APPROVED') {
+    await emitirComprobantes(tx, payment, booking.id);
+    const { dispatchId } = await enqueueReceipt(tx, { paymentId: payment.id, bookingId: booking.id,
+      dedupeKey: `payment-${payment.id}`, recipient: updatedBooking.contactEmail, snapshot: receiptSnapshot(updatedBooking) });
+    email = queuedEmail(dispatchId);
+  }
+  return { payment, reused: false, booking: updatedBooking, email };
 }

@@ -147,6 +147,7 @@ export default function SiteHeader({ user, activePath, onNotice }: SiteHeaderPro
             >
               Consultar Reserva
             </a>
+            {(user?.role === 'Mostrador Operativo' || user?.role === 'Administrador') && <a href="/mostrador" className={desktopLinkCls(false)}>Mostrador</a>}
             {PENDING_SECTIONS.map((s) => (
               <button
                 key={s.path}
@@ -240,6 +241,7 @@ export default function SiteHeader({ user, activePath, onNotice }: SiteHeaderPro
             >
               Consultar
             </a>
+            {(user?.role === 'Mostrador Operativo' || user?.role === 'Administrador') && <a href="/mostrador" className={mobileLinkCls(false)}>Mostrador</a>}
             {PENDING_SECTIONS.map((s) => (
               <button
                 key={s.path}

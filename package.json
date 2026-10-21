@@ -2,6 +2,9 @@
   "name": "aerogestion-uns",
   "version": "2.4.0",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "description": "AeroGestion UNS - Sistema de Gestion Aerea (BHI // AIRPORT OPS)",
   "scripts": {
     "dev": "next dev",
@@ -9,14 +12,17 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts",
+    "test": "tsx --tsconfig tests/tsconfig.json --test tests/*.test.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "db:seed": "prisma db seed",
-    "db:reset": "prisma migrate reset --force"
+    "db:reset": "prisma migrate reset --force",
+    "worker:receipts": "tsx workers/receipt-email.ts",
+    "test:unit": "tsx --tsconfig tests/tsconfig.json --test tests/unit/*.test.ts tests/unit/*.test.tsx",
+    "test:db:receipts": "node scripts/test-us08-us13.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.9.10",
@@ -24,11 +30,14 @@
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.2",
     "bcryptjs": "^2.4.3",
+    "bullmq": "^6.3.19",
+    "ioredis": "^6.0.0",
     "jspdf": "^4.2.1",
     "next": "^15.2.4",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-hot-toast": "^2.6.1",
+    "svix": "^2.8.0",
     "zod": "^3.24.2"
   },
   "devDependencies": {

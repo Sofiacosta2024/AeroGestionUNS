@@ -354,6 +354,7 @@ export const fareSchema = z.object({
   checkedBagKg: z.coerce.number().int().min(0).max(100).default(0),
   changeAllowed: z.coerce.boolean().default(false),
   seatSelection: z.coerce.boolean().default(false),
+  seatSelectionFee: z.coerce.number().finite().min(0).max(9999999999.99).multipleOf(0.01).default(0),
   refundable: z.coerce.boolean().default(false),
   benefits: z.array(trimmed(120)).max(10).default([]),
   isActive: z.coerce.boolean().default(true),

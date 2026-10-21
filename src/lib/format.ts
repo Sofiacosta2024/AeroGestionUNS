@@ -18,6 +18,13 @@ export function formatArs(value: number | string | null | undefined): string {
   return ARS.format(Number.isFinite(n) ? n : 0);
 }
 
+/** Cotizaciones y comprobantes: conservar centavos pactados sin alterar el formato histórico del sitio. */
+export function formatExactArs(value: number | string | null | undefined): string {
+  const amount = Number(value ?? 0);
+  return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 2 })
+    .format(Number.isFinite(amount) ? amount : 0);
+}
+
 const AMOUNT_INPUT = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 2 });
 
 /** 64200.5 -> "64.200,5": importe editable en un campo de texto (US-11A). */

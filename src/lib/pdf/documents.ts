@@ -1,5 +1,5 @@
 import { jsPDF } from 'jspdf';
-import { formatArs, formatFullDate, formatTime } from '@/lib/format';
+import { formatExactArs as formatArs, formatFullDate, formatTime } from '@/lib/format';
 import type {
   InvoiceDocument,
   TravelDocuments,
@@ -45,8 +45,9 @@ function drawField(doc: jsPDF, label: string, value: string, y: number): number 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(...BRAND);
-  doc.text(value, MARGIN, y + 6);
-  return y + 14;
+  const lines = doc.splitTextToSize(value, PAGE_WIDTH - MARGIN * 2) as string[];
+  doc.text(lines, MARGIN, y + 6);
+  return y + 14 + (lines.length - 1) * 5;
 }
 
 function drawDisclaimer(doc: jsPDF, y: number): void {
@@ -161,8 +162,9 @@ function drawInvoice(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(11);
   doc.setTextColor(...ACCENT);
-  doc.text(`Reserva ${bookingCode} · Comprobante ${invoice.reference}`, MARGIN, y + 6);
-  y += 20;
+  const referenceLines = doc.splitTextToSize(`Reserva ${bookingCode} · Comprobante ${invoice.reference}`, PAGE_WIDTH - MARGIN * 2) as string[];
+  doc.text(referenceLines, MARGIN, y + 6);
+  y += 20 + (referenceLines.length - 1) * 5;
 
   doc.setFontSize(9);
   doc.setTextColor(...MUTED);
@@ -170,7 +172,9 @@ function drawInvoice(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(...BRAND);
-  doc.text(invoice.buyerName, MARGIN, y + 6);
+  const buyerLines = doc.splitTextToSize(invoice.buyerName, PAGE_WIDTH - MARGIN * 2) as string[];
+  doc.text(buyerLines, MARGIN, y + 6);
+  y += (buyerLines.length - 1) * 5;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(11);
   doc.text(

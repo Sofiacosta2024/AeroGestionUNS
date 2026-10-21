@@ -144,6 +144,7 @@ function serializePrices(f: FlightWithRelations): SerializedPrice[] {
       benefits: ff.fare.benefits,
       changeAllowed: ff.fare.changeAllowed,
       seatSelection: ff.fare.seatSelection,
+      seatSelectionFee: Number(ff.fare.seatSelectionFee),
       refundable: ff.fare.refundable,
     }));
 }

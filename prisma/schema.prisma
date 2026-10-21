@@ -159,6 +159,7 @@ model User {
   bookings   Booking[]
   auditLogs  AuditLog[]
   flightSchedules FlightSchedule[]
+  counterSales CounterSale[]
 
   @@index([role])
   @@index([isActive])
@@ -347,6 +348,7 @@ model Fare {
   checkedBagKg     Int         @default(0) @map("checked_bag_kg")
   changeAllowed    Boolean     @default(false) @map("change_allowed")
   seatSelection    Boolean     @default(false) @map("seat_selection")
+  seatSelectionFee Decimal     @default(0) @map("seat_selection_fee") @db.Decimal(12, 2)
   refundable       Boolean     @default(false)
   /// Iconos Material Symbols a mostrar en la tarjeta de tarifa
   benefits         String[]    @default([])
@@ -502,6 +504,8 @@ model Booking {
   payments        Payment[]
   seatLocks       SeatLock[]
   comprobantes    Comprobante[]
+  counterSale CounterSale?
+  emailDispatches EmailDispatch[]
 
   @@index([userId])
   @@index([status])
@@ -522,6 +526,7 @@ model BookingFlight {
   /// Copia del precio pactada al momento de reservar
   price        Decimal @db.Decimal(12, 2)
   seatSelectionIncluded Boolean @default(false) @map("seat_selection_included")
+  seatSelectionAmount Decimal @default(0) @map("seat_selection_amount") @db.Decimal(12, 2)
   isReturn     Boolean @default(false) @map("is_return")
   departureAt  DateTime @map("departure_at") @db.Timestamptz(3)
 
@@ -576,6 +581,8 @@ model Payment {
   updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   comprobantes   Comprobante[]
+  counterSale CounterSale?
+  emailDispatches EmailDispatch[]
 
   @@index([bookingId])
   @@index([status])
@@ -661,4 +668,68 @@ model Comprobante {
   @@unique([bookingId, tipo])
   @@index([paymentId])
   @@map("comprobantes")
+}
+
+// US-08: idempotencia y operador de la venta presencial.
+model CounterSale {
+  id          String   @id @default(cuid())
+  requestId   String   @unique @map("request_id") @db.VarChar(36)
+  payloadHash String   @map("payload_hash") @db.Char(64)
+  operatorId  String   @map("operator_id")
+  operator    User     @relation(fields: [operatorId], references: [id], onDelete: Restrict)
+  branchName  String   @map("branch_name") @db.VarChar(120)
+  bookingId   String   @unique @map("booking_id")
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  paymentId   String   @unique @map("payment_id")
+  payment     Payment  @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("counter_sales")
+}
+
+enum EmailDispatchStatus {
+  PENDIENTE
+  ENVIADO
+  FALLIDO
+}
+
+// Outbox transaccional: Redis transporta IDs, nunca datos personales.
+model EmailDispatch {
+  id                String                 @id @default(cuid())
+  dedupeKey         String                 @unique @map("dedupe_key") @db.VarChar(160)
+  bookingId         String                 @map("booking_id")
+  booking           Booking                @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  paymentId         String                 @map("payment_id")
+  payment           Payment                @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  recipient         String                 @db.VarChar(160)
+  snapshot          Json
+  status            EmailDispatchStatus    @default(PENDIENTE)
+  attempts          Int                    @default(0)
+  nextAttemptAt     DateTime               @default(now()) @map("next_attempt_at") @db.Timestamptz(3)
+  queuedAt          DateTime               @default(now()) @map("queued_at") @db.Timestamptz(3)
+  leaseUntil        DateTime?              @map("lease_until") @db.Timestamptz(3)
+  leaseToken        String?                @map("lease_token")
+  acceptedAt        DateTime?              @map("accepted_at") @db.Timestamptz(3)
+  deliveredAt       DateTime?              @map("delivered_at") @db.Timestamptz(3)
+  bouncedAt         DateTime?              @map("bounced_at") @db.Timestamptz(3)
+  providerMessageId String?                @unique @map("provider_message_id")
+  lastError         String?                @map("last_error") @db.VarChar(255)
+  history           EmailDispatchAttempt[]
+
+  @@index([status, nextAttemptAt])
+  @@index([paymentId, queuedAt])
+  @@map("email_dispatches")
+}
+
+model EmailDispatchAttempt {
+  id         String        @id @default(cuid())
+  dispatchId String        @map("dispatch_id")
+  dispatch   EmailDispatch @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  attempt    Int
+  startedAt  DateTime      @default(now()) @map("started_at") @db.Timestamptz(3)
+  finishedAt DateTime?     @map("finished_at") @db.Timestamptz(3)
+  error      String?       @db.VarChar(255)
+
+  @@unique([dispatchId, attempt])
+  @@map("email_dispatch_attempts")
 }

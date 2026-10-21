@@ -43,7 +43,7 @@ export function requireComprobanteAccess<B extends ComprobanteBooking>(
  * pasaje y factura: 404 si el codigo no existe, 403 si el usuario no puede ver
  * los datos personales y 409 si todavia no hay un pago aprobado.
  *
- * Usa `comprobanteInclude` (9 consultas) en lugar de `bookingInclude` (13).
+ * Usa el include reducido de documentos en lugar del include completo de reservas.
  */
 export async function loadComprobanteContext(codigo: string): Promise<{
   booking: BookingForDocuments;

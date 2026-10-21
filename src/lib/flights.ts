@@ -32,6 +32,7 @@ export type SerializedPrice = {
   changeAllowed: boolean;
   seatSelection: boolean;
   refundable: boolean;
+  seatSelectionFee: number;
 };
 
 /**
@@ -56,6 +57,7 @@ export function serializeFlight(flight: FlightWithRelations, minSeats = 0) {
       benefits: f.fare.benefits,
       changeAllowed: f.fare.changeAllowed,
       seatSelection: f.fare.seatSelection,
+      seatSelectionFee: Number(f.fare.seatSelectionFee),
       refundable: f.fare.refundable,
     }));
 

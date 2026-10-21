@@ -23,18 +23,14 @@ export default async function ConfirmationPage({
   if (!payment || booking.status === 'CANCELLED')
     redirect(`/pago/${booking.bookingCode}`);
   const receipt = toReceipt(booking);
-  const lastEmail = await prisma.auditLog.findFirst({
-    where: { entity: 'Payment', entityId: payment.id, action: 'PAYMENT_EMAIL' },
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-  });
-  const metadata = lastEmail?.metadata as
-    Partial<EmailResult> | null | undefined;
-  const email: EmailResult | null =
-    metadata &&
-    (metadata.status === 'accepted' || metadata.status === 'failed') &&
-    typeof metadata.message === 'string'
-      ? { status: metadata.status, message: metadata.message }
-      : null;
+  const dispatch = await prisma.emailDispatch.findFirst({ where: { paymentId: payment.id }, orderBy: { queuedAt: 'desc' } });
+  const email: EmailResult | null = !dispatch ? null : dispatch.bouncedAt
+    ? { status: 'failed', message: 'El proveedor informó un rebote. Verificá el email de contacto antes de solicitar un reenvío.' }
+    : dispatch.deliveredAt
+    ? { status: 'delivered', message: 'El proveedor confirmó la entrega del pasaje y la factura. Revisá también spam.' }
+    : dispatch.status === 'ENVIADO' ? { status: 'accepted', message: 'El proveedor aceptó el correo para envío.' }
+    : dispatch.status === 'FALLIDO' ? { status: 'failed', message: 'No se pudo enviar el correo. Tu compra sigue confirmada; podés solicitar un reenvío.' }
+    : { status: 'queued', message: 'Se ha encolado el envío automático del pasaje y la factura PDF.' };
   return (
     <div className="confirmation-screen">
       <MobileBookingHeader title="Confirmación y comprobante" />

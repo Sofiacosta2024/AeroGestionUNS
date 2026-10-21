@@ -27,57 +27,32 @@ export type FlightSeatView = {
  * Libera de forma atómica todas las reservas PENDING cuyo tiempo de bloqueo de 5 minutos
  * haya expirado (RF-03). Restaura los cupos de asientos en las tarifas del vuelo.
  */
-export async function releaseExpiredSeatLocks(txClient?: Prisma.TransactionClient): Promise<number> {
-  const db = txClient ?? prisma;
+export async function releaseExpiredSeatLocks(txClient?: Prisma.TransactionClient, bookingCode?: string): Promise<number> {
+  if (!txClient) return prisma.$transaction((tx) => releaseExpiredSeatLocks(tx, bookingCode), { timeout: 60000, maxWait: 15000 });
+  const db = txClient;
   const now = new Date();
-
-  // Buscar reservas PENDING cuyo tiempo de bloqueo expiró
   const expiredBookings = await db.booking.findMany({
-    where: {
-      status: BookingStatus.PENDING,
-      expiresAt: { lt: now },
-    },
-    include: {
-      flights: true,
-      seatLocks: true,
-    },
+    where: { status: BookingStatus.PENDING, expiresAt: { lt: now }, ...(bookingCode ? { bookingCode } : {}) },
+    include: { flights: true }, orderBy: { id: 'asc' },
   });
-
-  if (expiredBookings.length === 0) {
-    // También limpiar locks huérfanos que hayan quedado vencidos
-    await db.seatLock.deleteMany({
-      where: { expiresAt: { lt: now } },
-    });
-    return 0;
-  }
-
+  let released = 0;
   for (const booking of expiredBookings) {
-    // Eliminar los bloqueos de asientos
-    await db.seatLock.deleteMany({
-      where: { bookingId: booking.id },
-    });
-
-    // Cancelar la reserva
-    await db.booking.update({
-      where: { id: booking.id },
+    const claimed = await db.booking.updateMany({
+      where: { id: booking.id, status: BookingStatus.PENDING, expiresAt: { lt: now } },
       data: { status: BookingStatus.CANCELLED },
     });
-
-    // Devolver los cupos a cada vuelo y tarifa de la reserva
+    if (claimed.count !== 1) continue;
+    await db.seatLock.deleteMany({ where: { bookingId: booking.id } });
     for (const bf of booking.flights) {
       await db.flightFare.updateMany({
-        where: {
-          flightId: bf.flightId,
-          fareId: bf.fareId,
-        },
-        data: {
-          availableSeats: { increment: booking.passengersCount },
-        },
+        where: { flightId: bf.flightId, fareId: bf.fareId },
+        data: { availableSeats: { increment: booking.passengersCount } },
       });
     }
+    released++;
   }
-
-  return expiredBookings.length;
+  await db.seatLock.deleteMany({ where: { expiresAt: { lt: now } } });
+  return released;
 }
 
 /**
@@ -400,9 +375,11 @@ export async function lockSeatsAtomic(
         })),
       });
     } catch (error) {
+      // El llamador debe repetir la transacción completa tras un conflicto de serialización.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') throw error;
       // Capturar colisión concurrente (Unique constraint failed o conflicto de serialización)
       if (
-        (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2002' || error.code === 'P2034')) ||
+        (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2002')) ||
         (error instanceof Error && (error.message.includes('could not serialize access') || error.message.includes('deadlock')))
       ) {
         throw ApiError.conflict('Asiento no disponible');

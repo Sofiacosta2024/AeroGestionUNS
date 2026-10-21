@@ -164,9 +164,11 @@ function transactionFixture(overrides: Record<string, unknown> = {}) {
     currency: 'ARS',
     contactEmail: 'old@example.com',
     passengersCount: 1,
-    passengers: [{ id: 'passenger' }],
+    passengers: [{ id: 'passenger', firstName: 'Manu', lastName: 'Tina', documentType: 'DNI', documentNumber: '30111222', seat: null }],
     payments: [],
-    flights: [],
+    flights: [{ departureAt: new Date('2027-01-01T10:00Z'), seatSelectionAmount: 0,
+      flight: { code: 'AG-1420', departureAt: new Date('2027-01-01T10:00Z'), arrivalAt: new Date('2027-01-01T11:00Z'),
+        route: { originAirport: { iataCode: 'BHI', city: 'Bahía Blanca' }, destinationAirport: { iataCode: 'AEP', city: 'Buenos Aires' } } } }],
     ...overrides,
   };
   const writes: Record<string, unknown>[] = [];
@@ -188,10 +190,12 @@ function transactionFixture(overrides: Record<string, unknown> = {}) {
         return state;
       },
     },
+    comprobante: { upsert: async () => ({}) },
+    emailDispatch: { upsert: async () => ({ id: 'dispatch' }) },
     payment: {
       create: async ({ data }: { data: Record<string, unknown> }) => {
         writes.push(data);
-        const payment = { ...data, id: 'payment' };
+        const payment = { ...data, id: 'payment', createdAt: new Date() };
         state.payments.push(payment);
         return payment;
       },

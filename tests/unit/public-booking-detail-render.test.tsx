@@ -66,7 +66,7 @@ function sampleBooking(overrides: Partial<PublicBookingView> = {}): PublicBookin
 }
 
 const render = (booking: PublicBookingView) =>
-  renderToStaticMarkup(createElement(ReservaDetalle, { booking }));
+  renderToStaticMarkup(createElement(ReservaDetalle, { booking, onReprogrammed: () => {} }));
 
 test('detalle: muestra codigo, estado, vuelo, ruta y horarios reales', () => {
   const html = render(sampleBooking());

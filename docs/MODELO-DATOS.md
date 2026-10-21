@@ -140,3 +140,8 @@ El seed inserta los pagos **directo en la base**, sin pasar por la API, así que
 comprobantes: después de un `db:reset` (o en un entorno nuevo) esa reserva queda sin filas
 en `comprobantes`. Se completan con el backfill de una corrida
 `npx tsx prisma/backfill-comprobantes.ts` (idempotente).
+
+
+## Extensión US-08 / US-13
+
+`CounterSale` registra operador, sucursal y requestId/payloadHash únicos por venta; `Fare.seatSelectionFee` configura recargo manual Economy; `BookingFlight.seatSelectionAmount` conserva el recargo pactado. `EmailDispatch` persiste outbox y snapshot inmutable; `EmailDispatchAttempt` conserva intentos. Estados PENDIENTE/ENVIADO/FALLIDO; aceptación, entrega y rebote se registran por separado. Ver [US08-US13.md](US08-US13.md).

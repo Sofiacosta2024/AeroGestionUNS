@@ -35,3 +35,6 @@ Thumbs.db
 
 # typescript
 *.tsbuildinfo
+
+# artefactos temporales de pruebas locales
+/tmp/

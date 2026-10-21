@@ -241,7 +241,7 @@ test('RF-03: Rechaza cuando los asientos no corresponden a la clase seleccionada
   );
 });
 
-test('RF-03: Pago después de 5 minutos es rechazado y la reserva se cancela automáticamente', async () => {
+test('RF-03: pago vencido rechaza sin cobrar ni mutar una transacción que se revertirá', async () => {
   let bookingStatus: BookingStatus = BookingStatus.PENDING;
   let deletedLocks = false;
   let restoredSeats = 0;
@@ -316,7 +316,7 @@ test('RF-03: Pago después de 5 minutos es rechazado y la reserva se cancela aut
     },
   );
 
-  assert.equal(bookingStatus, BookingStatus.CANCELLED);
-  assert.equal(deletedLocks, true);
-  assert.equal(restoredSeats, 1);
+  assert.equal(bookingStatus, BookingStatus.PENDING);
+  assert.equal(deletedLocks, false);
+  assert.equal(restoredSeats, 0);
 });

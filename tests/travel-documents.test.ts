@@ -15,6 +15,7 @@ type PassengerInput = {
 /** Reserva mínima con lo que consumen los documentos de viaje. */
 function makeBooking(options: {
   totalAmount?: number;
+  seatSelectionAmount?: number;
   cabinClass?: 'ECONOMY' | 'PREMIUM' | 'BUSINESS' | 'FIRST';
   seatSelection?: boolean;
   passengers?: PassengerInput[];
@@ -29,6 +30,7 @@ function makeBooking(options: {
     flights: [
       {
         price: 82700,
+        seatSelectionAmount: options.seatSelectionAmount ?? 0,
         departureAt: departure,
         fare: { seatSelection: options.seatSelection ?? false },
         flight: {
@@ -120,8 +122,10 @@ test('la factura toma el DNI del primer pasajero y emite comprobante B', () => {
   assert.equal(invoice.reference, 'MOCK-777');
 });
 
-test('incluye el cargo por elección de asiento Economy solo si hay asiento Economy', () => {
-  const withEconomy = toTravelDocuments(makeBooking()).invoice;
+test('incluye el recargo pactado; una asignación sin recargo no agrega cargos ficticios', () => {
+  const withEconomy = toTravelDocuments(makeBooking({ seatSelectionAmount: 9800 })).invoice;
+  assert.ok(withEconomy.lines.find(l => l.label.includes('asiento'))!.amount > 0);
+  assert.equal(Math.round(withEconomy.lines.reduce((sum, l) => sum + l.amount, 0) * 100), withEconomy.total * 100);
   assert.ok(
     withEconomy.lines.some((l) => l.label.includes('asiento')),
     'esperaba la línea de cargo de asiento',

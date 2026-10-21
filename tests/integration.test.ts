@@ -5,6 +5,8 @@ import { localTimeUtc } from '../src/lib/dates';
 import { expandOperatingDates, localDateTimeToUtc } from '../src/lib/scheduling/calendar';
 import { validateClassOffers } from '../src/lib/scheduling/capacity';
 import { findAircraftOverlaps } from '../src/lib/scheduling/conflicts';
+import { lastSchedulableDate } from '../src/lib/scheduling/config';
+import { assertSchedulableRange } from '../src/lib/scheduling/service';
 
 const id = 'c1234567890123456789012345';
 const flight = {
@@ -27,7 +29,11 @@ test('cronogramas validan vigencia y ambos modulos usan la misma hora argentina'
   const schedule = { ...flight, validFrom: flight.date, validTo: '2026-10-14', weekdays: [3, 3] };
   assert.deepEqual(flightScheduleSchema.parse(schedule).weekdays, [3]);
   assert.equal(flightScheduleSchema.safeParse({ ...schedule, validTo: '2026-10-06' }).success, false);
-  assert.equal(flightScheduleSchema.safeParse({ ...schedule, validTo: '2028-10-07' }).success, false);
+  // El schema valida forma/orden; el horizonte relativo al reloj lo aplica el servicio.
+  assert.equal(lastSchedulableDate('2026-10-07'), '2027-10-07');
+  assert.equal(lastSchedulableDate('2024-02-29'), '2025-02-28');
+  assert.throws(() => assertSchedulableRange({ validFrom: '2026-10-07', validTo: '2027-10-08' }, new Date('2026-10-07T12:00:00Z')));
+  assert.doesNotThrow(() => assertSchedulableRange({ validFrom: '2026-10-07', validTo: '2027-10-07' }, new Date('2026-10-07T12:00:00Z')));
   assert.deepEqual(expandOperatingDates(schedule.validFrom, schedule.validTo, [3]), ['2026-10-07', '2026-10-14']);
   assert.equal(localDateTimeToUtc(flight.date, flight.departureTime).toISOString(), '2026-10-07T09:45:00.000Z');
   assert.equal(localTimeUtc(flight.date, flight.departureTime).getTime(), localDateTimeToUtc(flight.date, flight.departureTime).getTime());

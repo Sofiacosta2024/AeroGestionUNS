@@ -2,12 +2,10 @@ import { ApiError, handler, ok, parseBody } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
 import { canViewBookingPii } from "@/lib/bookings";
-import { toReceipt } from "@/lib/checkout";
 import { settlePayment } from "@/lib/payment-service";
-import { emitirComprobantes } from "@/lib/comprobante-emission";
-import { sendReceipt } from "@/lib/payment-email";
 import { prisma } from "@/lib/prisma";
 import { paymentSchema } from "@/lib/validation";
+import { releaseExpiredSeatLocks } from "@/lib/seat-locks";
 export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ code: string }> };
 
@@ -29,9 +27,10 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
   const user = await requireUser();
   const { code } = await ctx.params;
   const body = await parseBody(req, paymentSchema);
+  await releaseExpiredSeatLocks(undefined, code.toUpperCase());
   const result = await prisma.$transaction(async (tx) => {
     return settlePayment(tx, code, user, body);
-  });
+  }, { timeout: 60000, maxWait: 15000 });
   if (!result.reused)
     await audit({
       userId: user.id,
@@ -44,31 +43,9 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
         simulated: true,
       },
     });
-  let email = null;
-  // Fuera de la transacción: un fallo del correo nunca revierte el pago.
-  if (result.payment.status === "APPROVED" && !result.reused) {
-    // La emision del comprobante se registra aca, al aprobarse el pago (RF-05):
-    // idempotente y nunca revierte una cobranza ya confirmada.
-    try {
-      await emitirComprobantes(prisma, result.payment, result.booking.id);
-    } catch (err) {
-      console.error("[comprobantes] no se pudieron emitir:", err);
-    }
-    email = await sendReceipt(
-      toReceipt(result.booking),
-      `payment-${result.payment.id}`,
-    );
-    await audit({
-      userId: user.id,
-      action: "PAYMENT_EMAIL",
-      entity: "Payment",
-      entityId: result.payment.id,
-      metadata: email,
-    });
-  }
   return ok({
     payment: { ...result.payment, amount: Number(result.payment.amount) },
     reused: result.reused,
-    email,
+    email: result.email,
   });
 });
