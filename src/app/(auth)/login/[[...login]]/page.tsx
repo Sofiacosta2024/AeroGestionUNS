@@ -3,10 +3,20 @@ import { clerkAppearance } from '@/lib/clerk-appearance';
 import LoginForm from '@/components/LoginForm';
 import AuthShell from '@/components/AuthShell';
 import ForgotPasswordForm from '@/components/ForgotPasswordForm';
+import PublicReservaLink from '@/components/PublicReservaLink';
 
 export default async function LoginPage({ params }: { params: Promise<{ login?: string[] }> }) {
   const { login } = await params;
-  if (!login?.length) return <LoginForm />;
+  // El login propio (`/login`) y los pasos de Clerk (`/login/clerk`) ofrecen la
+  // misma salida publica hacia la consulta de reservas.
+  if (!login?.length) {
+    return (
+      <>
+        <LoginForm />
+        <PublicReservaLink />
+      </>
+    );
+  }
   if (login.length === 1 && login[0] === 'recuperar-clave') return <ForgotPasswordForm />;
   return (
     <AuthShell>
@@ -19,14 +29,7 @@ export default async function LoginPage({ params }: { params: Promise<{ login?: 
         appearance={clerkAppearance}
       />
       {/* Salida publica: /reserva esta en isPublic (middleware), no pide sesion. */}
-      <p className="pt-2 text-center">
-        <a
-          className="font-label-md text-label-md text-secondary hover:underline underline-offset-4"
-          href="/reserva"
-        >
-          Consultar reserva sin iniciar sesión
-        </a>
-      </p>
+      <PublicReservaLink />
     </AuthShell>
   );
 }

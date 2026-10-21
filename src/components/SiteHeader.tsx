@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useClerk } from '@clerk/nextjs';
+import { buscarVuelosHref } from '@/lib/site-navigation';
 
 const TZ = 'America/Argentina/Buenos_Aires';
 
@@ -63,6 +64,9 @@ export default function SiteHeader({ user, activePath, onNotice }: SiteHeaderPro
   const { signOut } = useClerk();
   const [clock, setClock] = useState('--:--:--');
   const [internalNotice, setInternalNotice] = useState<string | null>(null);
+  // En la consulta publica de reservas la busqueda de vuelos exige sesion:
+  // el enlace ofrece el login. En /vuelos sigue apuntando a su seccion.
+  const vuelosHref = buscarVuelosHref(activePath);
 
   const notify = (label: string) => {
     if (onNotice) onNotice(label);
@@ -135,7 +139,7 @@ export default function SiteHeader({ user, activePath, onNotice }: SiteHeaderPro
               aria-current={activePath === 'vuelos' ? 'page' : undefined}
               className={desktopLinkCls(activePath === 'vuelos')}
               data-path="buscar-vuelos"
-              href="/vuelos"
+              href={vuelosHref}
             >
               Buscar Vuelos
             </a>
@@ -230,7 +234,7 @@ export default function SiteHeader({ user, activePath, onNotice }: SiteHeaderPro
             <a
               aria-current={activePath === 'vuelos' ? 'page' : undefined}
               className={mobileLinkCls(activePath === 'vuelos')}
-              href="/vuelos"
+              href={vuelosHref}
             >
               Buscar Vuelos
             </a>
