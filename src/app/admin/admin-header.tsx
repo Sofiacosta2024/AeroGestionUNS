@@ -8,6 +8,7 @@ const LINKS = [
   { href: '/mostrador', label: 'Venta en Mostrador' },
   { href: '/admin/vuelos/nuevo', label: 'Alta de vuelos' },
   { href: '/admin/itinerario', label: 'Planilla del día' },
+  { href: '/admin/contingencias', label: 'Contingencias' },
   { href: '/admin/reservas', label: 'Gestión de reservas' },
   { href: '/vuelos', label: 'Volver a los vuelos' },
 ] as const;
