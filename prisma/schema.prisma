@@ -77,6 +77,8 @@ enum BookingStatus {
   CANCELLED
   COMPLETED
   NO_SHOW
+  REPROGRAMACION_PENDIENTE
+  REASIGNADO
 }
 
 enum PaymentMethod {

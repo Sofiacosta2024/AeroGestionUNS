@@ -19,6 +19,7 @@
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "db:seed": "prisma db seed",
+    "db:seed:demo": "tsx scripts/seed-demo-passengers.ts",
     "db:reset": "prisma migrate reset --force",
     "worker:receipts": "tsx workers/receipt-email.ts",
     "test:unit": "tsx --tsconfig tests/tsconfig.json --test tests/unit/*.test.ts tests/unit/*.test.tsx",

@@ -29,6 +29,8 @@ export const bookingStatusEnum = z.enum([
   'CANCELLED',
   'COMPLETED',
   'NO_SHOW',
+  'REPROGRAMACION_PENDIENTE',
+  'REASIGNADO',
 ]);
 
 const money = z.coerce.number().nonnegative('No puede ser negativo').max(99_999_999);
