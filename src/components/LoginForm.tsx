@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useSignIn } from '@clerk/nextjs';
+import { CLERK_SIGN_IN_PATH } from '@/lib/auth-routes';
 
 export default function LoginForm() {
   const { signIn, fetchStatus } = useSignIn();
@@ -43,7 +44,7 @@ export default function LoginForm() {
         if (finalized.error) setError(finalized.error.longMessage || 'No se pudo activar la sesión.');
       } else {
         // Clerk completa MFA, confianza del dispositivo y demás desafíos pendientes.
-        window.location.assign('/login/clerk');
+        window.location.assign(CLERK_SIGN_IN_PATH);
       }
     } catch {
       setError('No se pudo conectar con el servicio de acceso. Intentá nuevamente.');

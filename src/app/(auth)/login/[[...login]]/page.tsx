@@ -4,6 +4,7 @@ import LoginForm from '@/components/LoginForm';
 import AuthShell from '@/components/AuthShell';
 import ForgotPasswordForm from '@/components/ForgotPasswordForm';
 import PublicReservaLink from '@/components/PublicReservaLink';
+import { CLERK_SIGN_IN_PATH } from '@/lib/auth-routes';
 
 export default async function LoginPage({ params }: { params: Promise<{ login?: string[] }> }) {
   const { login } = await params;
@@ -22,7 +23,7 @@ export default async function LoginPage({ params }: { params: Promise<{ login?: 
     <AuthShell>
       <SignIn
         routing="path"
-        path="/login"
+        path={CLERK_SIGN_IN_PATH}
         signUpUrl="/sign-up"
         fallbackRedirectUrl="/"
         forceRedirectUrl="/"

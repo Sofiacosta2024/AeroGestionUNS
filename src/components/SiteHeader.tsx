@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useClerk } from '@clerk/nextjs';
-import { buscarVuelosHref } from '@/lib/site-navigation';
+import { buscarVuelosHref, siteHeaderPendingSections, type SiteHeaderPath } from '@/lib/site-navigation';
 
 const TZ = 'America/Argentina/Buenos_Aires';
 
@@ -34,7 +34,7 @@ export type SiteHeaderUser = { name: string; role: string } | null;
 type SiteHeaderProps = {
   user: SiteHeaderUser;
   /** Seccion activa: define cual de los dos links reales recibe aria-current. */
-  activePath: 'vuelos' | 'reserva';
+  activePath: SiteHeaderPath;
   /**
    * Si la pagina provee un handler, los avisos "en construccion" la maneja ella
    * (con su propio banner). Si no, el header los maneja internamente: asi la
@@ -67,6 +67,7 @@ export default function SiteHeader({ user, activePath, onNotice }: SiteHeaderPro
   // En la consulta publica de reservas la busqueda de vuelos exige sesion:
   // el enlace ofrece el login. En /vuelos sigue apuntando a su seccion.
   const vuelosHref = buscarVuelosHref(activePath);
+  const pendingSections = siteHeaderPendingSections(activePath, PENDING_SECTIONS);
 
   const notify = (label: string) => {
     if (onNotice) onNotice(label);
@@ -152,7 +153,7 @@ export default function SiteHeader({ user, activePath, onNotice }: SiteHeaderPro
               Consultar Reserva
             </a>
             {(user?.role === 'Mostrador Operativo' || user?.role === 'Administrador') && <a href="/mostrador" className={desktopLinkCls(false)}>Mostrador</a>}
-            {PENDING_SECTIONS.map((s) => (
+            {pendingSections.map((s) => (
               <button
                 key={s.path}
                 className="px-space-md py-space-sm rounded-lg font-label-lg text-label-lg text-primary-fixed-dim hover:bg-primary hover:text-on-primary transition-colors"
@@ -246,7 +247,7 @@ export default function SiteHeader({ user, activePath, onNotice }: SiteHeaderPro
               Consultar
             </a>
             {(user?.role === 'Mostrador Operativo' || user?.role === 'Administrador') && <a href="/mostrador" className={mobileLinkCls(false)}>Mostrador</a>}
-            {PENDING_SECTIONS.map((s) => (
+            {pendingSections.map((s) => (
               <button
                 key={s.path}
                 className="shrink-0 px-3 py-1.5 rounded-lg font-label-md text-label-md text-primary-fixed-dim bg-primary/60"

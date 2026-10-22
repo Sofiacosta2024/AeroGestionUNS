@@ -2,8 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createElement, isValidElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { SignIn } from '@clerk/nextjs';
 import PublicReservaLink from '../../src/components/PublicReservaLink';
 import LoginPage from '../../src/app/(auth)/login/[[...login]]/page';
+import { CLERK_SIGN_IN_PATH } from '../../src/lib/auth-routes';
 
 /** Busca un elemento del tipo indicado dentro de un arbol de React. */
 function containsComponent(node: unknown, type: unknown): boolean {
@@ -11,6 +13,13 @@ function containsComponent(node: unknown, type: unknown): boolean {
   if (!isValidElement(node)) return false;
   if (node.type === type) return true;
   return containsComponent((node.props as { children?: unknown }).children, type);
+}
+
+function containsSignInWithPath(node: unknown, path: string): boolean {
+  if (Array.isArray(node)) return node.some((child) => containsSignInWithPath(child, path));
+  if (!isValidElement(node)) return false;
+  if (node.type === SignIn && (node.props as { path?: string }).path === path) return true;
+  return containsSignInWithPath((node.props as { children?: unknown }).children, path);
 }
 
 test('el enlace de consulta publica apunta a /reserva con el texto pedido', () => {
@@ -32,6 +41,15 @@ test('la pagina de login muestra el enlace tanto en el login propio como en Cler
   assert.ok(
     containsComponent(clerk, PublicReservaLink),
     'los pasos de Clerk deben ofrecer la salida publica a /reserva',
+  );
+});
+
+test('los pasos de Clerk usan la misma ruta base a la que redirige el login propio', async () => {
+  assert.equal(CLERK_SIGN_IN_PATH, '/login/clerk');
+  const view = await LoginPage({ params: Promise.resolve({ login: ['clerk'] }) });
+  assert.ok(
+    containsSignInWithPath(view, CLERK_SIGN_IN_PATH),
+    'el path de <SignIn> debe coincidir con CLERK_SIGN_IN_PATH para no volver a /login',
   );
 });
 
