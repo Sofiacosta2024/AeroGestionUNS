@@ -27,6 +27,9 @@ const STATUS_LABEL: Record<FlightStatus, string> = {
   CANCELLED: 'Cancelado',
 };
 
+const ACTION_LINK =
+  'inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-secondary hover:bg-surface-container text-xs font-semibold whitespace-nowrap transition-colors';
+
 const DAY_SHORT = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
 const NAV_BUTTON =
@@ -201,15 +204,32 @@ function FlightsTable({
                       Reasignar
                     </Link>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => onCancelFlight(f)}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-error hover:bg-error-container/60 text-xs font-semibold transition-colors border border-transparent hover:border-error/20"
-                      title="Cancelar este vuelo y retirar de la oferta comercial"
-                    >
-                      <span className="material-symbols-outlined text-[15px]">cancel</span>
-                      Cancelar
-                    </button>
+                    <div className="flex flex-col items-end gap-1">
+                      {/* Cambio US-11A: la US-12 habia reemplazado esta columna y se perdieron los
+                          links de Reprogramar (US-11B) y Editar tarifas (US-11A). Solo en vuelos
+                          programados o demorados que todavia no salieron. */}
+                      {f.reschedulable && (
+                        <>
+                          <Link className={ACTION_LINK} href={`/admin/vuelos/${f.id}/reprogramar`}>
+                            <span className="material-symbols-outlined text-[16px]">edit_calendar</span>
+                            Reprogramar
+                          </Link>
+                          <Link className={ACTION_LINK} href={`/admin/vuelos/${f.id}/tarifas`}>
+                            <span className="material-symbols-outlined text-[16px]">sell</span>
+                            Editar tarifas
+                          </Link>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => onCancelFlight(f)}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-error hover:bg-error-container/60 text-xs font-semibold transition-colors border border-transparent hover:border-error/20"
+                        title="Cancelar este vuelo y retirar de la oferta comercial"
+                      >
+                        <span className="material-symbols-outlined text-[15px]">cancel</span>
+                        Cancelar
+                      </button>
+                    </div>
                   )}
                 </td>
               </tr>
