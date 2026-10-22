@@ -430,6 +430,7 @@ export const bookingSchema = z.object({
 
 /** Validación del bloqueo transaccional de 1 a 9 asientos (RF-03) */
 export const lockSeatsSchema = z.object({
+  quotedTotal: z.coerce.number().finite().min(0).optional(),
   fareId: z.string().cuid('Tarifa invalida'),
   seatIds: z
     .array(z.string().cuid('Identificador de asiento invalido'))

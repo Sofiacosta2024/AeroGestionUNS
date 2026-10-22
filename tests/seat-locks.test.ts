@@ -51,6 +51,7 @@ function createMockSeatLockTx(overrides: {
   aircraftSeatsClass?: CabinClass;
   fareClass?: CabinClass;
   uniqueConstraintError?: boolean;
+  seatSelectionFee?: number;
 } = {}) {
   const {
     existingLocks = [],
@@ -59,6 +60,7 @@ function createMockSeatLockTx(overrides: {
     aircraftSeatsClass = CabinClass.ECONOMY,
     fareClass = CabinClass.ECONOMY,
     uniqueConstraintError = false,
+    seatSelectionFee = 0,
   } = overrides;
 
   const createdLocks: Array<Record<string, unknown>> = [];
@@ -113,6 +115,7 @@ function createMockSeatLockTx(overrides: {
       findUnique: async () => ({
         id: validCuid,
         name: 'Economy Flex',
+        seatSelectionFee,
         cabinClass: fareClass,
       }),
     },
@@ -127,6 +130,34 @@ function createMockSeatLockTx(overrides: {
 
   return { tx, createdLocks, createdBookings };
 }
+
+test('web guarda base y adicional por pasajero; AUTO no cobra ni duplica el adicional', async () => {
+  for (const mode of ['MANUAL', 'AUTO'] as const) {
+    const { tx, createdBookings } = createMockSeatLockTx({ seatSelectionFee: 3500.5 });
+    const total = mode === 'MANUAL' ? 107001 : 100000;
+    await lockSeatsAtomic({ flightId: validCuid, fareId: validCuid, seatIds: [validSeat1, validSeat2], contactEmail: 'web@example.com', seatMode: mode, quotedTotal: total }, tx);
+    const booking = createdBookings[0]!;
+    assert.equal(String(booking.totalAmount), String(total));
+    const flights = booking.flights as { create: Array<{ price: Prisma.Decimal; seatSelectionAmount: Prisma.Decimal; seatSelectionIncluded: boolean }> };
+    assert.equal(String(flights.create[0]!.price), '50000');
+    assert.equal(String(flights.create[0]!.seatSelectionAmount), mode === 'MANUAL' ? '7001' : '0');
+    assert.equal(flights.create[0]!.seatSelectionIncluded, mode === 'MANUAL');
+  }
+});
+
+test('web rechaza una cotización anterior al cambio del adicional sin crear reserva', async () => {
+  const { tx, createdBookings, createdLocks } = createMockSeatLockTx({ seatSelectionFee: 3500 });
+  await assert.rejects(lockSeatsAtomic({ flightId: validCuid, fareId: validCuid, seatIds: [validSeat1], contactEmail: 'web@example.com', quotedTotal: 50000 }, tx), /tarifa cambió/);
+  assert.equal(createdBookings.length, 0); assert.equal(createdLocks.length, 0);
+});
+
+test('Primera nunca cobra adicional, aunque el catálogo contenga un importe', async () => {
+  const { tx, createdBookings } = createMockSeatLockTx({ fareClass: CabinClass.FIRST, aircraftSeatsClass: CabinClass.FIRST, seatSelectionFee: 3500.5 });
+  await lockSeatsAtomic({ flightId: validCuid, fareId: validCuid, seatIds: [validSeat1], contactEmail: 'web@example.com', quotedTotal: 50000 }, tx);
+  assert.equal(String(createdBookings[0]!.totalAmount), '50000');
+  const flights = createdBookings[0]!.flights as { create: Array<{ seatSelectionAmount: Prisma.Decimal; seatSelectionIncluded: boolean }> };
+  assert.equal(String(flights.create[0]!.seatSelectionAmount), '0'); assert.equal(flights.create[0]!.seatSelectionIncluded, true);
+});
 
 test('RF-03: lockSeatsAtomic crea el bloqueo temporal con ventana de 5 minutos', async () => {
   const { tx, createdLocks, createdBookings } = createMockSeatLockTx();

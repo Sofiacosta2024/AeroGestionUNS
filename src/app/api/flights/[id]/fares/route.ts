@@ -3,6 +3,7 @@ import { ApiError, created, handler, noContent, ok, parseBody } from '@/lib/api'
 import { audit } from '@/lib/audit';
 import { requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { seatSelectionUnitFee } from '@/lib/seat-pricing';
 import { flightFareSchema } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
@@ -41,7 +42,8 @@ export const GET = handler(async (_req: Request, ctx: Ctx) => {
       checkedBagKg: f.fare.checkedBagKg,
       benefits: f.fare.benefits,
       changeAllowed: f.fare.changeAllowed,
-      seatSelection: f.fare.seatSelection,
+      seatSelection: seatSelectionUnitFee(f.fare) === 0,
+      seatSelectionFee: Number(f.fare.seatSelectionFee),
       refundable: f.fare.refundable,
     })),
   });

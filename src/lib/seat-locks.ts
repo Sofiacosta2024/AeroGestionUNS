@@ -1,6 +1,7 @@
 import { Prisma, CabinClass, BookingStatus } from '@prisma/client';
 import { ApiError } from './api';
 import { prisma } from './prisma';
+import { seatSelectionUnitFee } from './seat-pricing';
 
 /** Duración del bloqueo temporal estipulado por RF-03: 5 minutos en milisegundos */
 export const LOCK_DURATION_MS = 5 * 60 * 1000;
@@ -188,6 +189,8 @@ export async function getFlightSeatsStatus(
 }
 
 export type LockSeatsInput = {
+  seatMode?: 'AUTO' | 'MANUAL';
+  quotedTotal?: number | string;
   flightId: string;
   fareId: string;
   seatIds: string[];
@@ -272,6 +275,10 @@ export async function lockSeatsAtomic(
       }
     }
 
+    const seatSelectionAmount = new Prisma.Decimal(seatSelectionUnitFee(fareModel, input.seatMode)).mul(uniqueSeatIds.length);
+    const totalAmount = new Prisma.Decimal(flightFare.price).mul(uniqueSeatIds.length).add(seatSelectionAmount);
+    if (input.quotedTotal !== undefined && !totalAmount.eq(input.quotedTotal))
+      throw ApiError.conflict('La tarifa cambió. Actualice la cotización y confirme el nuevo total.');
     const now = new Date();
     const expiresAt = new Date(now.getTime() + LOCK_DURATION_MS);
 
@@ -335,7 +342,6 @@ export async function lockSeatsAtomic(
     // 6. Generar código de reserva y crear la reserva en estado PENDING con expiresAt
     const { generateBookingCode } = await import('./codes');
     const bookingCode = generateBookingCode();
-    const totalAmount = new Prisma.Decimal(flightFare.price).mul(uniqueSeatIds.length);
 
     const booking = await tx.booking.create({
       data: {
@@ -355,7 +361,8 @@ export async function lockSeatsAtomic(
               flightId,
               fareId,
               price: flightFare.price,
-              seatSelectionIncluded: fareModel.seatSelection,
+              seatSelectionIncluded: input.seatMode !== 'AUTO' || seatSelectionUnitFee(fareModel) === 0,
+              seatSelectionAmount,
               departureAt: flight.departureAt,
             },
           ],

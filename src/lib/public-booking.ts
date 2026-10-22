@@ -101,7 +101,7 @@ export function toPublicBookingView(booking: PublicBookingRecord): PublicBooking
       fare: {
         name: bf.fare.name,
         cabinClass: bf.fare.cabinClass,
-        seatSelection: bf.seatSelectionIncluded || bf.fare.seatSelection,
+        seatSelection: bf.seatSelectionIncluded ?? bf.fare.seatSelection,
       },
     })),
     passengers: booking.passengers.map((p) => ({

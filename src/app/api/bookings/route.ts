@@ -6,6 +6,7 @@ import { canManage, getCurrentUser } from '@/lib/auth';
 import { bookingInclude, redactBooking, serializeBooking } from '@/lib/bookings';
 import { generateBookingCode } from '@/lib/codes';
 import { prisma } from '@/lib/prisma';
+import { seatSelectionUnitFee } from '@/lib/seat-pricing';
 import { bookingSchema, paginationQuery } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
@@ -97,7 +98,7 @@ export const POST = handler(async (req: Request) => {
       flight,
       fareId: requested.fareId,
       price: flightFare.price,
-      seatSelectionIncluded: flightFare.fare.seatSelection,
+      seatSelectionIncluded: seatSelectionUnitFee(flightFare.fare) === 0,
       isReturn: requested.isReturn,
     };
   });

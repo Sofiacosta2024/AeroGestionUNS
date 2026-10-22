@@ -121,7 +121,7 @@ export const POST = handler(async (req: Request) => {
         origin: { iataCode: flight.route.originAirport.iataCode, city: flight.route.originAirport.city },
         destination: { iataCode: flight.route.destinationAirport.iataCode, city: flight.route.destinationAirport.city },
         fares,
-        availableSeats: (currentLeg.seatSelectionIncluded || currentLeg.fare.seatSelection)
+        availableSeats: (currentLeg.seatSelectionIncluded ?? currentLeg.fare.seatSelection)
           ? flight.aircraft.seats
               .filter((seat) => !unavailable.has(seat.id))
               .map((seat) => ({ id: seat.id, label: `${seat.rowNumber}${seat.columnLetter}` }))
@@ -132,7 +132,7 @@ export const POST = handler(async (req: Request) => {
     return ok({
       cabinClass: currentLeg.fare.cabinClass,
       passengersCount: booking.passengersCount,
-      seatSelectionPreserved: currentLeg.seatSelectionIncluded || currentLeg.fare.seatSelection,
+      seatSelectionPreserved: currentLeg.seatSelectionIncluded ?? currentLeg.fare.seatSelection,
       data: data.filter((flight) => flight.fares.length > 0),
     });
   }
@@ -236,7 +236,7 @@ export const POST = handler(async (req: Request) => {
     const freeSeats = replacement.aircraft.seats.filter((seat) => !unavailable.has(seat.id));
     if (freeSeats.length < lockedBooking.passengers.length) throw ApiError.conflict(SEAT_EXHAUSTED_MESSAGE);
 
-    const seatSelectionPaid = oldLeg.seatSelectionIncluded || oldLeg.fare.seatSelection;
+    const seatSelectionPaid = oldLeg.seatSelectionIncluded ?? oldLeg.fare.seatSelection;
     if (seatSelectionPaid && body.seatIds.length !== lockedBooking.passengers.length) {
       throw ApiError.badRequest('Seleccione un asiento disponible para cada pasajero.');
     }

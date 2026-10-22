@@ -97,7 +97,7 @@ export function toTravelDocuments(booking: BookingForDocuments): TravelDocuments
   const buyer = booking.passengers[0];
   const lines: InvoiceLine[] = [{ label: 'Tarifa base', amount: base }];
   if (seatSelectionGross > 0)
-    lines.push({ label: 'Cargo por elección de asiento (Economy)', amount: seatSelectionNet });
+    lines.push({ label: 'Cargo por elección de asiento', amount: seatSelectionNet });
   lines.push({ label: 'Impuestos (IVA 21%)', amount: taxes });
 
   const invoice: InvoiceDocument = {

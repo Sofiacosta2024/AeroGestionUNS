@@ -29,7 +29,7 @@ async function flight(capacity = 2, cabin: CabinClass = 'ECONOMY', premium = fal
   const aircraft = await db.aircraft.create({ data: { registration: `TEST-${seq}`, model: 'Test', manufacturer: 'Test', seatCount: capacity,
     seats: { create: Array.from({ length: capacity }, (_, i) => ({ rowNumber: i + 1, columnLetter: 'A', cabinClass: cabin })) } }, include: { seats: { orderBy: { rowNumber: 'asc' } } } });
   const fare = await db.fare.create({ data: { code: premium ? 'ECON-FLEX' : `TEST-${seq}`, name: premium ? 'Economy Premium' : cabin,
-    cabinClass: cabin, basePrice: 100, seatSelectionFee: premium ? 0 : 20, seatSelection: premium || cabin !== 'ECONOMY' } });
+    cabinClass: cabin, basePrice: 100, seatSelectionFee: premium || cabin !== 'ECONOMY' ? 0 : 20, seatSelection: premium || cabin !== 'ECONOMY' } });
   const f = await db.flight.create({ data: { code: `AG-${String(seq).padStart(4, '0')}`, routeId: route.id, aircraftId: aircraft.id,
     departureAt: new Date(Date.now() + seq * 86400000), arrivalAt: new Date(Date.now() + seq * 86400000 + 3600000),
     fares: { create: { fareId: fare.id, price: 100, availableSeats: capacity, seatCapacity: capacity } } } });
@@ -69,7 +69,8 @@ test('dos operadores reintentan la misma solicitud concurrentemente sin duplicar
 });
 test('recargo manual Economy, Premium en cabina física Economy y Primera sin recargo', async () => {
   for (const [cabin, premium, expected] of [['ECONOMY', false, '120.00'], ['ECONOMY', true, '100.00'], ['FIRST', false, '100.00']] as const) {
-    const { input, aircraft } = await flight(1, cabin, premium);
+    const { input, aircraft, fare } = await flight(1, cabin, premium);
+    if (premium || cabin !== 'ECONOMY') await db.fare.update({ where: { id: fare.id }, data: { seatSelectionFee: '20.50' } });
     input.seatMode = 'MANUAL'; input.passengers[0]!.seatId = aircraft.seats[0]!.id; input.quotedTotal = expected;
     const quote = await quoteCounterSale({ ...input, passengersCount: 1 }, operator);
     assert.equal(quote.totalAmount, expected);
@@ -80,13 +81,13 @@ test('recargo manual Economy, Premium en cabina física Economy y Primera sin re
     assert.equal(snapshot.documents.passes[0]!.cabinClass, premium ? 'Economy Premium' : cabin === 'FIRST' ? 'Primera Clase' : 'Economy');
   }
 });
-test('precio adulterado y rol pasajero no dejan registros; tarifa sin recargo sólo permite AUTO', async () => {
+test('precio adulterado y rol pasajero no dejan registros; adicional cero permite selección gratuita', async () => {
   const { input, fare } = await flight();
   await assert.rejects(createCounterSale({ ...input, quotedTotal: '1.00' }, operator), /tarifa cambió/);
   await assert.rejects(createCounterSale(input, { ...operator, role: 'PASAJERO' }));
   assert.equal(await db.counterSale.count({ where: { requestId: input.requestId } }), 0);
   await db.fare.update({ where: { id: fare.id }, data: { seatSelectionFee: 0 } });
-  await assert.rejects(quoteCounterSale({ ...input, passengersCount: 1, seatMode: 'MANUAL' }, operator), /no está configurado/);
+  assert.equal((await quoteCounterSale({ ...input, passengersCount: 1, seatMode: 'MANUAL' }, operator)).totalAmount, '100.00');
   assert.equal((await quoteCounterSale({ ...input, passengersCount: 1 }, operator)).totalAmount, '100.00');
 });
 test('dos limpiadores no restauran dos veces los cupos vencidos', async () => {
@@ -104,6 +105,30 @@ test('worker concurrente entrega una sola vez con dos PDFs del snapshot', async 
   assert.equal(sent, 1);
   assert.equal((await db.emailDispatch.findUniqueOrThrow({ where: { id: sale.email.dispatchId } })).status, 'ENVIADO');
 });
+test('web y mostrador guardan el mismo adicional; cambiar catálogo no altera reservas ni PDFs previos', async () => {
+  const { input, fare, aircraft } = await flight(4);
+  await db.fare.update({ where: { id: fare.id }, data: { seatSelectionFee: '20.50' } });
+  const passengers = [input.passengers[0]!, { ...input.passengers[0]!, documentNumber: '30111222' }];
+  const web = await lockSeatsAtomic({ flightId: input.flightId, fareId: fare.id, seatIds: aircraft.seats.slice(0, 2).map(s => s.id),
+    userId: operator.id, contactEmail: input.contactEmail, passengers, quotedTotal: 241 });
+  const sale = await createCounterSale({ ...input, seatMode: 'MANUAL', quotedTotal: '241.00',
+    passengers: passengers.map((p, i) => ({ ...p, seatId: aircraft.seats[i + 2]!.id })) }, operator);
+  const counter = await db.booking.findUniqueOrThrow({ where: { bookingCode: sale.bookingCode }, include: { flights: true } });
+  const webBooking = await db.booking.findUniqueOrThrow({ where: { id: web.bookingId }, include: { flights: true } });
+  for (const booking of [counter, webBooking]) {
+    assert.equal(booking.totalAmount.toFixed(2), '241.00');
+    assert.equal(booking.flights[0]!.seatSelectionAmount.toFixed(2), '41.00');
+    assert.equal(booking.flights[0]!.price.toFixed(2), '100.00');
+    assert.equal(booking.flights[0]!.seatSelectionIncluded, true);
+  }
+  await db.fare.update({ where: { id: fare.id }, data: { seatSelectionFee: 90 } });
+  const quote = await quoteCounterSale({ ...input, passengersCount: 2, seatMode: 'MANUAL' }, operator, db, false);
+  assert.equal(quote.totalAmount, '380.00');
+  assert.equal((await db.booking.findUniqueOrThrow({ where: { id: web.bookingId } })).totalAmount.toFixed(2), '241.00');
+  const dispatch = await db.emailDispatch.findUniqueOrThrow({ where: { id: sale.email.dispatchId } });
+  assert.equal(receiptSnapshotSchema.parse(dispatch.snapshot).documents.invoice.total, 241);
+});
+
 test('pago web encola dentro del mismo commit y reintento no duplica email', async () => {
   const { input, aircraft } = await flight(1);
   const locked = await lockSeatsAtomic({ ...input, seatIds: [aircraft.seats[0]!.id], userId: operator.id,

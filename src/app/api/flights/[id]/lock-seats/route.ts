@@ -23,6 +23,7 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
   const result = await lockSeatsAtomic({
     flightId: id,
     fareId: body.fareId,
+    quotedTotal: body.quotedTotal,
     seatIds: body.seatIds,
     contactEmail: user?.email ?? body.contactEmail,
     contactPhone: body.contactPhone ?? null,

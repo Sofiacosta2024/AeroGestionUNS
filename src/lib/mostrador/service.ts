@@ -7,7 +7,7 @@ import { emitirComprobantes } from '../comprobante-emission';
 import { enqueueReceipt, receiptSnapshot } from '../email/outbox';
 import { queuedEmail } from '../email/types';
 import { BOOKABLE_STATUSES } from '../flights';
-import { commercialCabin } from '../cabin';
+import { seatSelectionUnitFee } from '../seat-pricing';
 import { prisma } from '../prisma';
 import { lockSeatsAtomic, releaseExpiredSeatLocks } from '../seat-locks';
 import type { CounterQuoteInput, CounterSaleInput, CounterSaleResult } from './types';
@@ -28,14 +28,11 @@ export async function quoteCounterSale(input: CounterQuoteInput, user: AuthUser,
   if (!BOOKABLE_STATUSES.includes(offer.flight.status) || offer.flight.departureAt <= new Date())
     throw ApiError.conflict('El vuelo ya no está disponible para la venta');
   if (checkCapacity && offer.availableSeats < input.passengersCount) throw ApiError.conflict('No hay cupos suficientes en esta clase');
-  const manualEconomy = input.seatMode === 'MANUAL' && commercialCabin(offer.fare) === 'ECONOMY';
-  if (manualEconomy && new Prisma.Decimal(offer.fare.seatSelectionFee).lte(0))
-    throw ApiError.conflict('El recargo Economy no está configurado. Utilice asignación automática.');
   const base = new Prisma.Decimal(offer.price).mul(input.passengersCount);
-  const surcharge = new Prisma.Decimal(manualEconomy ? offer.fare.seatSelectionFee : 0).mul(input.passengersCount);
+  const surcharge = new Prisma.Decimal(seatSelectionUnitFee(offer.fare, input.seatMode)).mul(input.passengersCount);
   return { baseAmount: base.toFixed(2), seatSelectionAmount: surcharge.toFixed(2),
     totalAmount: base.add(surcharge).toFixed(2), currency: offer.currency, cabinClass: offer.fare.cabinClass,
-    aircraftId: offer.flight.aircraftId, selectionIncluded: commercialCabin(offer.fare) !== 'ECONOMY' };
+    aircraftId: offer.flight.aircraftId, selectionIncluded: seatSelectionUnitFee(offer.fare) === 0 };
 }
 
 /** Una sola transacción decide cupo, asiento, pago, comprobantes y outbox. */
@@ -75,6 +72,7 @@ export async function createCounterSale(raw: CounterSaleInput, user: AuthUser, d
           if (seatIds.length !== input.passengers.length) throw ApiError.conflict('No hay asientos libres suficientes en esta clase');
         }
         const locked = await lockSeatsAtomic({ flightId: input.flightId, fareId: input.fareId, seatIds,
+          seatMode: input.seatMode, quotedTotal: Number(input.quotedTotal),
           contactEmail: input.contactEmail, contactPhone: input.contactPhone, userId: null,
           passengers: input.passengers.map(p => ({ ...p, documentType: 'DNI' as const })),
         }, tx);
