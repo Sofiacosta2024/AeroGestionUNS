@@ -153,7 +153,16 @@ export default function SiteHeader({ user, activePath, onNotice }: SiteHeaderPro
               Consultar Reserva
             </a>
             {(user?.role === 'Mostrador Operativo' || user?.role === 'Administrador') && <a href="/mostrador" className={desktopLinkCls(false)}>Mostrador</a>}
-            {pendingSections.map((s) => (
+            {pendingSections
+              .filter((s) => {
+                if (s.path === 'alta-de-vuelos-admin') {
+                  if (!user) return false;
+                  const r = user.role || '';
+                  return r === 'Administrador' || r.toLowerCase().includes('admin');
+                }
+                return true;
+              })
+              .map((s) => (
               <button
                 key={s.path}
                 className="px-space-md py-space-sm rounded-lg font-label-lg text-label-lg text-primary-fixed-dim hover:bg-primary hover:text-on-primary transition-colors"
@@ -247,7 +256,16 @@ export default function SiteHeader({ user, activePath, onNotice }: SiteHeaderPro
               Consultar
             </a>
             {(user?.role === 'Mostrador Operativo' || user?.role === 'Administrador') && <a href="/mostrador" className={mobileLinkCls(false)}>Mostrador</a>}
-            {pendingSections.map((s) => (
+            {pendingSections
+              .filter((s) => {
+                if (s.path === 'alta-de-vuelos-admin') {
+                  if (!user) return false;
+                  const r = user.role || '';
+                  return r === 'Administrador' || r.toLowerCase().includes('admin');
+                }
+                return true;
+              })
+              .map((s) => (
               <button
                 key={s.path}
                 className="shrink-0 px-3 py-1.5 rounded-lg font-label-md text-label-md text-primary-fixed-dim bg-primary/60"
