@@ -61,6 +61,13 @@ const STATUS_PRESENTATION: Record<string, { label: string; tone: BookingTone }> 
   CANCELLED: { label: 'Reserva cancelada', tone: 'bad' },
   COMPLETED: { label: 'Vuelo completado', tone: 'info' },
   NO_SHOW: { label: 'Pasajero ausente', tone: 'bad' },
+  // US-14B / US-15: estados del ciclo de contingencia (Sprint 3 v2.0).
+  REPROGRAMACION_PENDIENTE: { label: 'Reprogramación pendiente', tone: 'warn' },
+  REASIGNACION_PROPUESTA: { label: 'Reasignación propuesta', tone: 'warn' },
+  SIN_ALTERNATIVA: { label: 'Sin alternativa', tone: 'warn' },
+  REPROGRAMADA: { label: 'Reprogramada', tone: 'ok' },
+  /** Compatibilidad con reservas guardadas antes de la v2.0. */
+  REASIGNADO: { label: 'Reasignada', tone: 'ok' },
 };
 
 const CABIN_LABELS: Record<string, string> = {

@@ -24,6 +24,30 @@ test('estado conocido: etiqueta y tono de la historia', () => {
   assert.equal(bookingStatusPresentation('PENDING').tone, 'warn');
 });
 
+test('estados de contingencia y reprogramacion: etiqueta y tono', () => {
+  assert.deepEqual(bookingStatusPresentation('REPROGRAMACION_PENDIENTE'), {
+    label: 'Reprogramación pendiente',
+    tone: 'warn',
+  });
+  assert.deepEqual(bookingStatusPresentation('REASIGNACION_PROPUESTA'), {
+    label: 'Reasignación propuesta',
+    tone: 'warn',
+  });
+  assert.deepEqual(bookingStatusPresentation('SIN_ALTERNATIVA'), {
+    label: 'Sin alternativa',
+    tone: 'warn',
+  });
+  assert.deepEqual(bookingStatusPresentation('REPROGRAMADA'), {
+    label: 'Reprogramada',
+    tone: 'ok',
+  });
+  // Compatibilidad con reservas guardadas antes de la v2.0.
+  assert.deepEqual(bookingStatusPresentation('REASIGNADO'), {
+    label: 'Reasignada',
+    tone: 'ok',
+  });
+});
+
 test('estado conocido: ignora mayusculas y espacios', () => {
   assert.equal(bookingStatusPresentation('  confirmed ').label, 'Compra confirmada');
 });
