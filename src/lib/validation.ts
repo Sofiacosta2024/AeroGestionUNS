@@ -646,3 +646,42 @@ export const bookingReprogramSchema = z.discriminatedUnion('action', [
   bookingReprogramSearchSchema,
   bookingReprogramConfirmSchema,
 ]);
+
+// ---------------------------------------------------------------------------
+// API MOVIL (US-10A)
+// ---------------------------------------------------------------------------
+
+/**
+ * Bloqueo de asientos desde la app movil. El email de contacto sale de la
+ * sesion de Clerk, nunca del cuerpo; por eso se omite `contactEmail`.
+ */
+export const mobileReservationSchema = lockSeatsSchema
+  .omit({ contactEmail: true })
+  .extend({
+    flightId: z.string().cuid('flightId invalido'),
+    seatMode: z.enum(['AUTO', 'MANUAL']).default('MANUAL'),
+  })
+  .refine(
+    (d) => !!d.passengers && d.passengers.length === d.seatIds.length,
+    {
+      message: 'Debe enviar los datos de todos los pasajeros seleccionados',
+      path: ['passengers'],
+    },
+  );
+
+export type MobileReservationInput = z.output<typeof mobileReservationSchema>;
+
+/** Pago simulado desde la app movil: mismo esquema que la web + codigo de reserva. */
+export const mobilePaymentSchema = paymentSchema.extend({
+  bookingCode: z
+    .string()
+    .trim()
+    .min(1, 'El codigo de reserva es obligatorio')
+    .transform(normalizeBookingCode)
+    .refine(
+      (v) => BOOKING_CODE_RE.test(v),
+      'El codigo de reserva debe tener el formato AG-XXXXXX (6 caracteres alfanumericos)',
+    ),
+});
+
+export type MobilePaymentInput = z.output<typeof mobilePaymentSchema>;
