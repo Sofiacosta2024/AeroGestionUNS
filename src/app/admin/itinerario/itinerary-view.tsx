@@ -8,7 +8,7 @@ import { formatArs, formatFullDate, formatWeekday } from '@/lib/format';
 import { shiftDate } from '@/lib/scheduling/calendar';
 import type { ItineraryFlightView } from '@/lib/scheduling/itinerary';
 import type { SerializedSchedule } from '@/lib/scheduling/serializers';
-import { ApiRequestError, apiRequest, detailMessages } from '../api-client';
+import { apiRequest, errorDetails } from '../api-client';
 import CancelFlightModal from './cancel-flight-modal';
 
 type Props = {
@@ -254,7 +254,9 @@ function DraftsSection({ drafts, onChanged }: { drafts: SerializedSchedule[]; on
     } catch (err) {
       setError({
         message: err instanceof Error ? err.message : 'No se pudo completar la acción',
-        details: err instanceof ApiRequestError ? detailMessages(err.details) : [],
+        // Cambio BUG-02 (RF-01): un choque al publicar muestra solo el mensaje corto, sin la
+        // lista por vuelo. Se habia perdido con el cambio de la US-12.
+        details: errorDetails(err),
       });
     } finally {
       setBusyId(null);
