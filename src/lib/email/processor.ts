@@ -1,12 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import { prisma } from '../prisma';
-import { DeliveryError, sendReceiptEmail } from './provider';
+import { itinerarySnapshotSchema } from './itinerary-snapshot';
+import { DeliveryError, sendItineraryEmail, sendReceiptEmail } from './provider';
 import { receiptSnapshotSchema } from './types';
 
 export const RETRY_DELAYS_MS = [5000, 15000, 30000] as const;
 export const MAX_EMAIL_ATTEMPTS = 4;
-type Options = { db?: PrismaClient; now?: () => Date; send?: typeof sendReceiptEmail; recipient?: string };
+type Options = {
+  db?: PrismaClient; now?: () => Date; send?: typeof sendReceiptEmail; sendItinerary?: typeof sendItineraryEmail; recipient?: string;
+};
 
 export async function processReceiptDispatch(dispatchId: string, options: Options = {}) {
   const db = options.db ?? prisma;
@@ -30,9 +33,18 @@ export async function processReceiptDispatch(dispatchId: string, options: Option
   });
   if (!dispatch) return;
   try {
-    const parsed = receiptSnapshotSchema.safeParse(dispatch.snapshot);
-    if (!parsed.success) throw new DeliveryError('Los datos del comprobante no son válidos', false);
-    const sent = await (options.send ?? sendReceiptEmail)(parsed.data, `receipt-${dispatch.id}`);
+    // Cambio US-06A: la outbox tambien lleva avisos de reprogramacion. Solo cambia que se arma y
+    // se envia; el lease, los reintentos y el estado final son los mismos para los dos tipos.
+    let sent: { providerMessageId: string };
+    if (dispatch.kind === 'ITINERARY_CHANGE') {
+      const parsed = itinerarySnapshotSchema.safeParse(dispatch.snapshot);
+      if (!parsed.success) throw new DeliveryError('Los datos del aviso de reprogramación no son válidos', false);
+      sent = await (options.sendItinerary ?? sendItineraryEmail)(parsed.data, `itinerary-${dispatch.id}`);
+    } else {
+      const parsed = receiptSnapshotSchema.safeParse(dispatch.snapshot);
+      if (!parsed.success) throw new DeliveryError('Los datos del comprobante no son válidos', false);
+      sent = await (options.send ?? sendReceiptEmail)(parsed.data, `receipt-${dispatch.id}`);
+    }
     await db.$transaction(async tx => {
       const claimed = await tx.emailDispatch.updateMany({ where: { id: dispatchId, leaseToken }, data: {
         status: 'ENVIADO', acceptedAt: now(), providerMessageId: sent.providerMessageId, leaseUntil: null, leaseToken: null, lastError: null,

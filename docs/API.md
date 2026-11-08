@@ -263,8 +263,8 @@ Reglas:
 - Solo vuelos `SCHEDULED` o `DELAYED` que todavía no salieron (si no, `409`).
 - Las mismas del alta, sin contar al propio vuelo: no al pasado, no más allá de hoy + 1
   año, margen entre salidas del mismo aeropuerto y rotación del avión.
-- La ruta solo cambia si el vuelo no tiene reservas activas (pagadas, confirmadas o
-  pendientes con el bloqueo vigente).
+- La ruta solo cambia si el vuelo no tiene reservas activas: pagadas, confirmadas,
+  reasignadas por la US-12B (`REASIGNADO`) o pendientes con el bloqueo vigente.
 - El avión solo cambia si no hay asientos asignados ni bloqueados. Si lo ofrecido en una
   cabina no entra en el avión nuevo, cada clase de esa cabina se reduce en la misma
   proporción sin bajar de lo vendido (ej. 100 Economy + 44 Economy Premium en 144 → 75 + 33
@@ -296,6 +296,16 @@ Respuestas de error:
   "canSave": true
 }
 ```
+
+`affectedPassengers` cuenta a los pasajeros que reciben el aviso por email: los de reservas
+pagadas, confirmadas o reasignadas.
+
+**Aviso por email (US-06A).** Al guardar, en la misma transacción se encola un correo por
+reserva con pasaje (WF-06A) en la outbox de la US-13. Lo envía el worker de comprobantes. El
+`PATCH` responde `notifications: { queued, skipped }`, y lo mismo queda en la auditoría.
+`skipped` cuenta las reservas cuyo email o código no sirven para el correo. Las compras
+pendientes de pago no reciben aviso. El endpoint previo `PATCH /api/flights/:id` también
+encola el aviso. Ver [US-06A-AVISO-REPROGRAMACION.md](US-06A-AVISO-REPROGRAMACION.md).
 
 ## Tarifas y capacidad por clase (US-11A)
 

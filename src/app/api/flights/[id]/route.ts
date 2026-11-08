@@ -34,7 +34,8 @@ export const PATCH = handler(async (req: Request, ctx: Ctx) => {
   // Cambio US-11B: ruta, avion y salida ya no se escriben directo. Pasan por las mismas
   // reglas que la reprogramacion del panel (choques, reservas, capacidad) y la llegada se
   // recalcula. `code` y `arrivalAt` ya no se aceptan (ver flightUpdateSchema).
-  const rescheduled = await applyItineraryPatch(id, { routeId, aircraftId, departureAt });
+  // Cambio US-06A: igual que el panel, encola el aviso por email a cada reserva con pasaje.
+  const rescheduled = await applyItineraryPatch(id, { routeId, aircraftId, departureAt }, { origin: new URL(req.url).origin });
   if (rescheduled) {
     await audit({
       userId: user.id,
@@ -46,6 +47,7 @@ export const PATCH = handler(async (req: Request, ctx: Ctx) => {
         after: rescheduled.after,
         affectedPassengers: rescheduled.affectedPassengers,
         resizedClasses: rescheduled.resizedClasses,
+        notifications: rescheduled.notifications,
       },
     });
   }
