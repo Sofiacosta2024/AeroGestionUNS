@@ -695,14 +695,23 @@ enum EmailDispatchStatus {
   FALLIDO
 }
 
+/// Tipo de correo de la outbox. Cambio US-06A: antes solo habia comprobantes (US-13).
+enum EmailKind {
+  RECEIPT
+  ITINERARY_CHANGE
+}
+
 // Outbox transaccional: Redis transporta IDs, nunca datos personales.
 model EmailDispatch {
   id                String                 @id @default(cuid())
   dedupeKey         String                 @unique @map("dedupe_key") @db.VarChar(160)
+  /// Cambio US-06A: las filas anteriores quedan como comprobantes.
+  kind              EmailKind              @default(RECEIPT)
   bookingId         String                 @map("booking_id")
   booking           Booking                @relation(fields: [bookingId], references: [id], onDelete: Restrict)
-  paymentId         String                 @map("payment_id")
-  payment           Payment                @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  /// Cambio US-06A: opcional, porque un aviso de reprogramacion no sale de un pago.
+  paymentId         String?                @map("payment_id")
+  payment           Payment?               @relation(fields: [paymentId], references: [id], onDelete: Restrict)
   recipient         String                 @db.VarChar(160)
   snapshot          Json
   status            EmailDispatchStatus    @default(PENDIENTE)
