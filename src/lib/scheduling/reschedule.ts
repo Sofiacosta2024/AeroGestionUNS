@@ -7,6 +7,7 @@ import { addMinutes, localDateTimeToUtc, localTimeOf } from './calendar';
 import { CABIN_LABEL, classLoadOf, fitClassesToCabins, type OfferIssue } from './capacity';
 import { schedulingRules } from './config';
 import { OVERLAP_MESSAGE, type PlannedFlight, type ScheduleConflict } from './conflicts';
+import { notifyFlightRescheduled, type NoticeResult } from './itinerary-notices';
 import * as repo from './repository';
 import type { FlightToReschedule } from './repository';
 import { assertSchedulableRange, findConflicts, type ConflictView } from './service';
@@ -200,14 +201,21 @@ export type RescheduleResult = {
   affectedPassengers: number;
   /** Clases cuya capacidad se ajusto al avion nuevo. */
   resizedClasses: ClassChange[];
+  /** Avisos por email encolados (US-06A). */
+  notifications: NoticeResult;
 };
 
 /**
  * Guarda la reprogramacion. Revalida dentro de la transaccion con el mismo lock que la
  * publicacion de cronogramas y con el vuelo bloqueado, asi una compra simultanea (RF-03)
- * no descuenta asientos a mitad del cambio.
+ * no descuenta asientos a mitad del cambio. En la misma transaccion encola el aviso por email
+ * a cada reserva con pasaje (US-06A). `origin` arma el link «Ver Mi Reserva».
  */
-export async function rescheduleFlight(flightId: string, input: RescheduleInput): Promise<RescheduleResult> {
+export async function rescheduleFlight(
+  flightId: string,
+  input: RescheduleInput,
+  options: { origin: string },
+): Promise<RescheduleResult> {
   return prisma.$transaction(
     async (tx) => {
       await repo.lockScheduling(tx);
@@ -221,6 +229,7 @@ export async function rescheduleFlight(flightId: string, input: RescheduleInput)
 
       const resizedClasses = view.classes.filter((c) => c.newCapacity !== c.capacity);
       const rowOf = new Map(flight.fares.map((f) => [f.fareId, f.id]));
+      const beforeLeg = await repo.loadFlightLeg(tx, flight.id);
       await repo.applyReschedule(
         tx,
         flight.id,
@@ -231,6 +240,9 @@ export async function rescheduleFlight(flightId: string, input: RescheduleInput)
           availableSeats: c.newCapacity - c.sold,
         })),
       );
+      const notifications = beforeLeg
+        ? await notifyFlightRescheduled(tx, flight.id, beforeLeg, options.origin)
+        : { queued: 0, skipped: 0 };
 
       return {
         flightId: flight.id,
@@ -245,6 +257,7 @@ export async function rescheduleFlight(flightId: string, input: RescheduleInput)
         after: { routeId: input.routeId, aircraftId: input.aircraftId, departureAt: view.departureAt, arrivalAt: view.arrivalAt },
         affectedPassengers: view.affectedPassengers,
         resizedClasses,
+        notifications,
       };
     },
     { maxWait: 10_000, timeout: 15_000 },
@@ -258,6 +271,7 @@ export async function rescheduleFlight(flightId: string, input: RescheduleInput)
 export async function applyItineraryPatch(
   flightId: string,
   patch: { routeId?: string; aircraftId?: string; departureAt?: Date },
+  options: { origin: string },
 ): Promise<RescheduleResult | null> {
   const flight = await getFlightItinerary(flightId);
   if (!flight) throw ApiError.notFound('Vuelo no encontrado');
@@ -270,5 +284,5 @@ export async function applyItineraryPatch(
     departureTime: patch.departureAt ? localTimeOf(patch.departureAt) : current.departureTime,
   };
   const moves = (Object.keys(next) as (keyof RescheduleInput)[]).some((k) => next[k] !== current[k]);
-  return moves ? rescheduleFlight(flightId, next) : null;
+  return moves ? rescheduleFlight(flightId, next, options) : null;
 }

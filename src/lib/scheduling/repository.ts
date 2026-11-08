@@ -1,5 +1,6 @@
 import { BookingStatus, FlightStatus, ScheduleStatus, type CabinClass, type Prisma } from '@prisma/client';
 import { formatFlightCode } from '@/lib/codes';
+import type { ItineraryLeg } from '@/lib/email/itinerary-snapshot';
 import type { ScheduleInput } from '@/lib/validation';
 import type { CabinSeats, SellableClass } from './capacity';
 import type { PlannedFlight, ScheduledFlight } from './conflicts';
@@ -277,12 +278,19 @@ export function findFlightToReschedule(db: Db, id: string): Promise<FlightToResc
   return db.flight.findUnique({ where: { id }, select: flightToRescheduleSelect });
 }
 
-/** Reservas del vuelo que siguen en pie: pagadas, confirmadas o pendientes con el bloqueo vigente. */
+/**
+ * Reservas con pasaje emitido en el vuelo: pagadas, confirmadas o reasignadas a este vuelo por la
+ * cancelacion de otro (US-12B). Son las que reciben el aviso por email (US-06A).
+ */
+export const TICKETED_STATUSES: BookingStatus[] = [BookingStatus.CONFIRMED, BookingStatus.PAID, BookingStatus.REASIGNADO];
+
+/** Reservas del vuelo que siguen en pie: con pasaje emitido o pendientes con el bloqueo vigente. */
 function activeBookingsOf(flightId: string, now: Date): Prisma.BookingWhereInput {
   return {
     flights: { some: { flightId } },
     OR: [
-      { status: { in: [BookingStatus.CONFIRMED, BookingStatus.PAID] } },
+      // Cambio US-06A: tambien cuentan las reasignadas por la US-12B (antes no frenaban un cambio de ruta).
+      { status: { in: TICKETED_STATUSES } },
       { status: BookingStatus.PENDING, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
     ],
   };
@@ -290,6 +298,7 @@ function activeBookingsOf(flightId: string, now: Date): Prisma.BookingWhereInput
 
 export type FlightBookingLoad = {
   bookings: number;
+  /** Pasajeros de reservas con pasaje emitido: los que reciben el aviso por email (US-06A). */
   passengers: number;
   /** Asientos asignados a pasajeros o bloqueados durante una compra (RF-03). */
   seatsTaken: number;
@@ -297,16 +306,70 @@ export type FlightBookingLoad = {
 
 export async function countFlightBookings(db: Db, flightId: string, now: Date): Promise<FlightBookingLoad> {
   const active = activeBookingsOf(flightId, now);
-  const [bookings, assignedSeats, lockedSeats] = await Promise.all([
-    db.booking.aggregate({ where: active, _count: { _all: true }, _sum: { passengersCount: true } }),
+  const [bookings, ticketed, assignedSeats, lockedSeats] = await Promise.all([
+    db.booking.count({ where: active }),
+    // Cambio US-06A: las compras pendientes no reciben el aviso (su comprobante sale con el horario nuevo).
+    db.booking.aggregate({
+      where: { flights: { some: { flightId } }, status: { in: TICKETED_STATUSES } },
+      _sum: { passengersCount: true },
+    }),
     db.bookingPassenger.count({ where: { seatId: { not: null }, booking: active } }),
     db.seatLock.count({ where: { flightId, expiresAt: { gt: now } } }),
   ]);
   return {
-    bookings: bookings._count._all,
-    passengers: bookings._sum.passengersCount ?? 0,
+    bookings,
+    passengers: ticketed._sum.passengersCount ?? 0,
     seatsTaken: assignedSeats + lockedSeats,
   };
+}
+
+const flightLegSelect = {
+  code: true,
+  departureAt: true,
+  arrivalAt: true,
+  route: {
+    select: {
+      originAirport: { select: { iataCode: true, city: true } },
+      destinationAirport: { select: { iataCode: true, city: true } },
+    },
+  },
+  aircraft: { select: { model: true, registration: true } },
+} satisfies Prisma.FlightSelect;
+
+/** Un vuelo tal como se muestra en el aviso de reprogramacion (US-06A). */
+export async function loadFlightLeg(db: Db, flightId: string): Promise<ItineraryLeg | null> {
+  const f = await db.flight.findUnique({ where: { id: flightId }, select: flightLegSelect });
+  if (!f) return null;
+  return {
+    flightCode: f.code,
+    origin: { code: f.route.originAirport.iataCode, city: f.route.originAirport.city },
+    destination: { code: f.route.destinationAirport.iataCode, city: f.route.destinationAirport.city },
+    departureAt: f.departureAt.toISOString(),
+    arrivalAt: f.arrivalAt.toISOString(),
+    aircraft: `${f.aircraft.model} · ${f.aircraft.registration}`,
+  };
+}
+
+const noticeBookingSelect = {
+  id: true,
+  bookingCode: true,
+  contactEmail: true,
+  passengers: { select: { firstName: true }, orderBy: { createdAt: 'asc' }, take: 1 },
+} satisfies Prisma.BookingSelect;
+
+export type NoticeBooking = Prisma.BookingGetPayload<{ select: typeof noticeBookingSelect }>;
+
+/** Reservas con pasaje emitido en el vuelo, con lo que necesita el aviso (US-06A). */
+export function findTicketedBookings(db: Db, flightId: string): Promise<NoticeBooking[]> {
+  return db.booking.findMany({
+    where: { flights: { some: { flightId } }, status: { in: TICKETED_STATUSES } },
+    select: noticeBookingSelect,
+    orderBy: { createdAt: 'asc' },
+  });
+}
+
+export function findNoticeBooking(db: Db, bookingId: string): Promise<NoticeBooking | null> {
+  return db.booking.findUnique({ where: { id: bookingId }, select: noticeBookingSelect });
 }
 
 /**
