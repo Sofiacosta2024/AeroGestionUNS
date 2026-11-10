@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import type { CabinClass } from '@prisma/client';
 import type { FlightSeatView } from '@/lib/seat-locks';
+import { seatSelectionUnitFee } from '@/lib/seat-pricing';
 
 const AVATAR =
   'https://lh3.googleusercontent.com/aida/AEtjO1WEhfaUl0efpt8MGhPU4BBSstKaHhbeJkOote0mUJ6_jYF6PAiF6FJ3oV7QSAdXoJj44L0BuwK0AMb8x9jtVQ3_fy7ZsUgPcH9cyj-MAcA7WCfUbepbSac9uc1dl-esKJHlvyljleDzT7OiNIG0e0zFh0Xe8ICzkK0eg0ZK6ZNHsIYEAclfRhCoKbMbUSqDQdarW6j9TqCWU1zKs56C4wu8KN0_Goo_-hECEtlTYqVYoNRpNtJjTTxrdHc';
@@ -18,6 +19,7 @@ export type FareInfo = {
   name: string;
   cabinClass: CabinClass;
   seatSelection?: boolean;
+  seatSelectionFee: number;
   price: number;
   currency: string;
 };
@@ -57,68 +59,14 @@ type AsientosClientProps = {
   currentUser: CurrentUserInfo;
 };
 
-/**
- * Calcula dinámicamente el costo adicional de una butaca en base a la tarifa,
- * fila especial (Fila 3 VIP +$14k, Fila 14 Salida de emergencia +Leg),
- * y derechos de elección de asiento (seatSelection).
- */
+/** El adicional depende de la tarifa, sin diferencias por fila o columna. */
 export function getSeatAdditionalPrice(
-  seat: FlightSeatView,
+  _seat: FlightSeatView,
   fare: FareInfo | null | undefined,
 ): { price: number; label: string; isIncluded: boolean } {
-  // 1. Fila 3 en Primera Clase / Premium Club (+ $14.000 ARS, badge "+$14k")
-  if (seat.rowNumber === 3) {
-    return {
-      price: 14000,
-      label: '+$14.000 ARS',
-      isIncluded: false,
-    };
-  }
-
-  // 2. Fila 14 Salida de Emergencia con espacio extra ("+Leg")
-  const isExtraLegroom =
-    seat.rowNumber === 14 &&
-    ['A', 'B', 'D', 'E', 'F'].includes(seat.columnLetter);
-
-  if (isExtraLegroom) {
-    const extraLegroomFee = 6000;
-    if (fare && fare.seatSelection === false) {
-      const totalFee = 3500 + extraLegroomFee;
-      return {
-        price: totalFee,
-        label: `+$${totalFee.toLocaleString('es-AR')} ARS`,
-        isIncluded: false,
-      };
-    }
-    return {
-      price: extraLegroomFee,
-      label: '+$6.000 ARS',
-      isIncluded: false,
-    };
-  }
-
-  // 3. Butaca estándar:
-  if (fare?.seatSelection) {
-    return {
-      price: 0,
-      label: 'Incluido $0',
-      isIncluded: true,
-    };
-  }
-
-  if (fare && fare.seatSelection === false) {
-    return {
-      price: 3500,
-      label: '+$3.500 ARS',
-      isIncluded: false,
-    };
-  }
-
-  return {
-    price: 0,
-    label: 'Incluido $0',
-    isIncluded: true,
-  };
+  const price = seatSelectionUnitFee(fare);
+  const amount = new Intl.NumberFormat('es-AR', { style: 'currency', currency: fare?.currency ?? 'ARS', maximumFractionDigits: 2 }).format(price);
+  return { price, label: price > 0 ? '+' + amount : 'Incluido $0', isIncluded: price === 0 };
 }
 
 export default function AsientosClient({
@@ -347,6 +295,7 @@ export default function AsientosClient({
         body: JSON.stringify({
           fareId: currentFare?.id,
           seatIds: selectedSeatIds,
+          quotedTotal: grandTotal.toFixed(2),
           contactEmail: currentUser?.email ?? 'contacto@aerogestion.uns.edu.ar',
           passengers: passengersPayload,
         }),
@@ -362,6 +311,7 @@ export default function AsientosClient({
               : json.error?.message,
           );
           await refreshSeats();
+          router.refresh();
           setSelectedSeatIds([]);
           return;
         }
@@ -697,8 +647,7 @@ export default function AsientosClient({
                             key={seat.id}
                             seat={seat}
                             isSelected={selectedSeatIds.includes(seat.id)}
-                            isExtraPrice={rowNum === 3}
-                            extraLabel="+$14k"
+                            priceLabel={seat.cabinClass === currentFare?.cabinClass ? getSeatAdditionalPrice(seat, currentFare).label : "Otra clase"}
                             onClick={() => handleSeatClick(seat)}
                           />
                         ))}
@@ -718,8 +667,7 @@ export default function AsientosClient({
                             key={seat.id}
                             seat={seat}
                             isSelected={selectedSeatIds.includes(seat.id)}
-                            isExtraPrice={rowNum === 3}
-                            extraLabel="+$14k"
+                            priceLabel={seat.cabinClass === currentFare?.cabinClass ? getSeatAdditionalPrice(seat, currentFare).label : "Otra clase"}
                             onClick={() => handleSeatClick(seat)}
                           />
                         ))}
@@ -774,6 +722,7 @@ export default function AsientosClient({
                             key={seat.id}
                             seat={seat}
                             isSelected={selectedSeatIds.includes(seat.id)}
+                            priceLabel={seat.cabinClass === currentFare?.cabinClass ? getSeatAdditionalPrice(seat, currentFare).label : "Otra clase"}
                             onClick={() => handleSeatClick(seat)}
                           />
                         ))}
@@ -798,6 +747,7 @@ export default function AsientosClient({
                             key={seat.id}
                             seat={seat}
                             isSelected={selectedSeatIds.includes(seat.id)}
+                            priceLabel={seat.cabinClass === currentFare?.cabinClass ? getSeatAdditionalPrice(seat, currentFare).label : "Otra clase"}
                             onClick={() => handleSeatClick(seat)}
                           />
                         ))}
@@ -834,8 +784,7 @@ export default function AsientosClient({
                             key={seat.id}
                             seat={seat}
                             isSelected={selectedSeatIds.includes(seat.id)}
-                            isExtraPrice={rowNum === 14 && (seat.columnLetter === 'A' || seat.columnLetter === 'B')}
-                            extraLabel="+Leg"
+                            priceLabel={seat.cabinClass === currentFare?.cabinClass ? getSeatAdditionalPrice(seat, currentFare).label : "Otra clase"}
                             onClick={() => handleSeatClick(seat)}
                           />
                         ))}
@@ -854,8 +803,7 @@ export default function AsientosClient({
                             key={seat.id}
                             seat={seat}
                             isSelected={selectedSeatIds.includes(seat.id)}
-                            isExtraPrice={rowNum === 14 && (seat.columnLetter === 'E' || seat.columnLetter === 'F')}
-                            extraLabel="+Leg"
+                            priceLabel={seat.cabinClass === currentFare?.cabinClass ? getSeatAdditionalPrice(seat, currentFare).label : "Otra clase"}
                             onClick={() => handleSeatClick(seat)}
                           />
                         ))}
@@ -901,7 +849,8 @@ export default function AsientosClient({
                               key={seat.id}
                               seat={seat}
                               isSelected={selectedSeatIds.includes(seat.id)}
-                              onClick={() => handleSeatClick(seat)}
+                              priceLabel={seat.cabinClass === currentFare?.cabinClass ? getSeatAdditionalPrice(seat, currentFare).label : "Otra clase"}
+                            onClick={() => handleSeatClick(seat)}
                             />
                           ))}
                         </div>
@@ -923,7 +872,8 @@ export default function AsientosClient({
                               key={seat.id}
                               seat={seat}
                               isSelected={selectedSeatIds.includes(seat.id)}
-                              onClick={() => handleSeatClick(seat)}
+                              priceLabel={seat.cabinClass === currentFare?.cabinClass ? getSeatAdditionalPrice(seat, currentFare).label : "Otra clase"}
+                            onClick={() => handleSeatClick(seat)}
                             />
                           ))}
                         </div>
@@ -1241,14 +1191,12 @@ export default function AsientosClient({
 function SeatButtonGraphic({
   seat,
   isSelected,
-  isExtraPrice = false,
-  extraLabel = '',
+  priceLabel = '',
   onClick,
 }: {
   seat: FlightSeatView;
   isSelected: boolean;
-  isExtraPrice?: boolean;
-  extraLabel?: string;
+  priceLabel?: string;
   onClick: () => void;
 }) {
   const isOccupied = seat.status === 'OCCUPIED';
@@ -1262,7 +1210,7 @@ function SeatButtonGraphic({
         type="button"
         onClick={onClick}
         className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-[#E11D48] text-white font-extrabold text-[11px] flex items-center justify-center shadow-md shadow-rose-600/30 scale-105 transition-transform cursor-pointer border border-[#be123c]"
-        title={`${seat.rowNumber}${seat.columnLetter} (Seleccionado)`}
+        title={`${seat.rowNumber}${seat.columnLetter} (Seleccionado) · ${priceLabel}`}
       >
         <span>{seat.rowNumber}{seat.columnLetter}</span>
       </button>
@@ -1297,23 +1245,6 @@ function SeatButtonGraphic({
     );
   }
 
-  // 4. Asiento con precio extra (+ $14k o +Leg) - SIN ICONOS
-  if (isExtraPrice) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-white border border-slate-300 hover:border-[#E11D48] hover:bg-rose-50/40 text-slate-800 font-bold text-[10px] flex flex-col items-center justify-center transition-all cursor-pointer shadow-sm leading-tight"
-        title={`${seat.rowNumber}${seat.columnLetter}`}
-      >
-        <span className="leading-none">{seat.rowNumber}{seat.columnLetter}</span>
-        <span className={`text-[8px] font-black leading-none mt-0.5 ${extraLabel === '+Leg' ? 'text-[#E11D48]' : 'text-slate-600'}`}>
-          {extraLabel}
-        </span>
-      </button>
-    );
-  }
-
   // 5. Asientos First Class (Filas 1 y 2: azul cielo vivo, MISMO TAMAÑO QUE EL RESTO, SIN ICONO)
   if (isFirstClass) {
     return (
@@ -1321,7 +1252,7 @@ function SeatButtonGraphic({
         type="button"
         onClick={onClick}
         className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-[#e0f2fe] border border-[#7dd3fc] hover:bg-[#bae6fd] hover:border-[#38bdf8] text-[#0369a1] font-bold text-[11px] flex items-center justify-center transition-all cursor-pointer shadow-sm"
-        title={`${seat.rowNumber}${seat.columnLetter} (Primera Clase)`}
+        title={`${seat.rowNumber}${seat.columnLetter} (Primera Clase) · ${priceLabel}`}
       >
         <span>{seat.rowNumber}{seat.columnLetter}</span>
       </button>
@@ -1334,7 +1265,7 @@ function SeatButtonGraphic({
       type="button"
       onClick={onClick}
       className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-white border border-slate-300 hover:border-[#E11D48] hover:bg-rose-50/40 text-slate-800 font-bold text-[11px] flex items-center justify-center transition-all cursor-pointer shadow-sm"
-      title={`${seat.rowNumber}${seat.columnLetter}`}
+      title={`${seat.rowNumber}${seat.columnLetter} · ${priceLabel}`}
     >
       <span>{seat.rowNumber}{seat.columnLetter}</span>
     </button>

@@ -7,7 +7,6 @@ import { SaleConfirmation } from '@/components/mostrador/sale-confirmation';
 import { counterSaleSchema, counterFieldErrors, type CounterFieldErrors } from '@/lib/mostrador/validation';
 import type { CounterQuote, CounterSaleInput, CounterSaleResult } from '@/lib/mostrador/types';
 import { formatExactArs as formatArs, toDateInput } from '@/lib/format';
-import { commercialCabin } from '@/lib/cabin';
 
 async function json<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, cache: 'no-store' });
@@ -170,10 +169,9 @@ export default function CounterSaleClient() {
                 onChange={e => { setPhone(e.target.value); clearFieldError('contactPhone'); }} />
               {fieldErrors.contactPhone && <p id="counter-phone-error" className="counter-field-error">{fieldErrors.contactPhone}</p>}</div></div>
           <h3>Asiento</h3><div className="counter-mode">{(['AUTO', 'MANUAL'] as const).map(mode => <button type="button" key={mode} aria-pressed={seatMode === mode}
-            disabled={locked || !selected || (mode === 'MANUAL' && commercialCabin(selected.offer) === 'ECONOMY' && !selected.offer.seatSelectionFee)}
+            disabled={locked || !selected}
             onClick={() => { setSeatMode(mode); setPassengers(old => old.map(p => ({ ...p, seatId: undefined }))); }}>{mode === 'AUTO' ? 'Asignación automática' : 'Elegir en mapa'}</button>)}</div>
-          <p className="counter-muted">En Economy la elección de asiento tiene recargo. En Economy Premium y Primera Clase está incluida.</p>
-          {selected && commercialCabin(selected.offer) === 'ECONOMY' && !selected.offer.seatSelectionFee && <p className="counter-muted">La elección de ubicación se habilita cuando la tarifa tenga un recargo configurado.</p>}
+          <p className="counter-muted">La elección manual en Economy aplica el adicional configurado. En Economy Premium, Primera y asignación automática está incluida.</p>
           {seatMode === 'MANUAL' && <SeatPicker seats={seats} selectedIds={passengers.map(p => p.seatId)} activePassenger={activePassenger} onPassenger={setActivePassenger} disabled={locked}
             errors={passengers.map((_, i) => fieldErrors[`passengers.${i}.seatId`])}
             onSeat={id => { clearFieldError(`passengers.${activePassenger}.seatId`); setPassengers(old => old.map((p, i) => i === activePassenger ? { ...p, seatId: id } : p)); }} />}

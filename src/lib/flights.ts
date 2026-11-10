@@ -1,4 +1,5 @@
 import type { FlightStatus, Prisma } from '@prisma/client';
+import { seatSelectionUnitFee } from './seat-pricing';
 
 export const flightInclude = {
   route: { include: { originAirport: true, destinationAirport: true } },
@@ -56,7 +57,7 @@ export function serializeFlight(flight: FlightWithRelations, minSeats = 0) {
       checkedBagKg: f.fare.checkedBagKg,
       benefits: f.fare.benefits,
       changeAllowed: f.fare.changeAllowed,
-      seatSelection: f.fare.seatSelection,
+      seatSelection: seatSelectionUnitFee(f.fare) === 0,
       seatSelectionFee: Number(f.fare.seatSelectionFee),
       refundable: f.fare.refundable,
     }));

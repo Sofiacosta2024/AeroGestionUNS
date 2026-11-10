@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
 import { getFlightSeatsStatus } from '@/lib/seat-locks';
+import { seatSelectionUnitFee } from '@/lib/seat-pricing';
 import AsientosClient from './asientos-client';
 
 export const dynamic = 'force-dynamic';
@@ -88,7 +89,8 @@ export default async function AsientosPage({
                 code: selectedFare.fare.code,
                 name: selectedFare.fare.name,
                 cabinClass: selectedFare.fare.cabinClass,
-                seatSelection: selectedFare.fare.seatSelection,
+                seatSelection: seatSelectionUnitFee(selectedFare.fare) === 0,
+                seatSelectionFee: Number(selectedFare.fare.seatSelectionFee),
                 price: Number(selectedFare.price),
                 currency: selectedFare.currency,
               }
@@ -99,7 +101,8 @@ export default async function AsientosPage({
           code: f.fare.code,
           name: f.fare.name,
           cabinClass: f.fare.cabinClass,
-          seatSelection: f.fare.seatSelection,
+          seatSelection: seatSelectionUnitFee(f.fare) === 0,
+          seatSelectionFee: Number(f.fare.seatSelectionFee),
           price: Number(f.price),
           currency: f.currency,
         }))}

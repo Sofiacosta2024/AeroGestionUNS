@@ -20,7 +20,12 @@ const isPublicPage = createRouteMatcher([
   '/api/webhooks/resend',
   '/api/health',
 ]);
-const isFlightRead = createRouteMatcher(['/api/flights', '/api/flights/([^/]+)/seats']);
+const isFlightRead = createRouteMatcher([
+  '/api/flights',
+  '/api/flights/([^/]+)/seats',
+  // US-10A: la busqueda movil versionada es publica, igual que el buscador web.
+  '/api/v1/mobile/vuelos',
+]);
 /** Las lecturas comerciales son públicas; no habilitar por prefijo APIs de escritura. */
 function isPublic(req: NextRequest) {
   if (isPublicPage(req)) return true;

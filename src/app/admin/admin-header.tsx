@@ -8,6 +8,7 @@ const LINKS = [
   { href: '/mostrador', label: 'Venta en Mostrador' },
   { href: '/admin/vuelos/nuevo', label: 'Alta de vuelos' },
   { href: '/admin/itinerario', label: 'Planilla del día' },
+  { href: '/admin/tarifas', label: 'Adicionales por asiento' },
   { href: '/admin/contingencias', label: 'Contingencias' },
   { href: '/admin/reservas', label: 'Gestión de reservas' },
   { href: '/vuelos', label: 'Volver a los vuelos' },
@@ -54,7 +55,7 @@ export default function AdminHeader({ userName, role = 'ADMIN' }: { userName: st
           aria-label="Navegacion de administracion"
           className="order-last lg:order-none w-full lg:w-auto flex items-center gap-space-xs overflow-x-auto"
         >
-          {LINKS.map((l) => (
+          {LINKS.filter(l => role === 'ADMIN' || l.href !== '/admin/tarifas').map((l) => (
             <Link
               key={l.href}
               aria-current={pathname.startsWith(l.href) ? 'page' : undefined}

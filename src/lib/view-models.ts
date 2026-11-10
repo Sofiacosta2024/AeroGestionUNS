@@ -1,4 +1,5 @@
 import type { FlightWithRelations, SerializedPrice } from './flights';
+import { seatSelectionUnitFee } from './seat-pricing';
 
 /**
  * Formas de datos que cruzan el limite Server -> Client.
@@ -143,7 +144,7 @@ function serializePrices(f: FlightWithRelations): SerializedPrice[] {
       checkedBagKg: ff.fare.checkedBagKg,
       benefits: ff.fare.benefits,
       changeAllowed: ff.fare.changeAllowed,
-      seatSelection: ff.fare.seatSelection,
+      seatSelection: seatSelectionUnitFee(ff.fare) === 0,
       seatSelectionFee: Number(ff.fare.seatSelectionFee),
       refundable: ff.fare.refundable,
     }));

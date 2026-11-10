@@ -52,6 +52,16 @@ test('buscador público por GET; APIs internas y escrituras siguen protegidas', 
   assert.equal(isPublic(req('/api/audit-logs')), false);
 });
 
+test('US-10A: busqueda movil publica por GET; reservas y pago requieren Bearer', () => {
+  assert.equal(isPublic(req('/api/v1/mobile/vuelos')), true);
+  assert.equal(
+    isPublic({ url: 'http://localhost/api/v1/mobile/vuelos', nextUrl: new URL('http://localhost/api/v1/mobile/vuelos'), method: 'POST' } as never),
+    false,
+  );
+  assert.equal(isPublic(req('/api/v1/mobile/reservas')), false);
+  assert.equal(isPublic(req('/api/v1/mobile/pago')), false);
+});
+
 test('protegidas: admin y mostrador (paginas y APIs)', () => {
   assert.equal(isPublic(req('/admin')), false);
   assert.equal(isPublic(req('/admin/bookings')), false);

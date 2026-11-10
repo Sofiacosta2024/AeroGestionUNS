@@ -8,7 +8,7 @@ import { formatArs, formatFullDate, formatWeekday } from '@/lib/format';
 import { shiftDate } from '@/lib/scheduling/calendar';
 import type { ItineraryFlightView } from '@/lib/scheduling/itinerary';
 import type { SerializedSchedule } from '@/lib/scheduling/serializers';
-import { ApiRequestError, apiRequest, detailMessages } from '../api-client';
+import { apiRequest, errorDetails } from '../api-client';
 import CancelFlightModal from './cancel-flight-modal';
 
 type Props = {
@@ -26,6 +26,9 @@ const STATUS_LABEL: Record<FlightStatus, string> = {
   DELAYED: 'Demorado',
   CANCELLED: 'Cancelado',
 };
+
+const ACTION_LINK =
+  'inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-secondary hover:bg-surface-container text-xs font-semibold whitespace-nowrap transition-colors';
 
 const DAY_SHORT = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
@@ -201,15 +204,32 @@ function FlightsTable({
                       Reasignar
                     </Link>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => onCancelFlight(f)}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-error hover:bg-error-container/60 text-xs font-semibold transition-colors border border-transparent hover:border-error/20"
-                      title="Cancelar este vuelo y retirar de la oferta comercial"
-                    >
-                      <span className="material-symbols-outlined text-[15px]">cancel</span>
-                      Cancelar
-                    </button>
+                    <div className="flex flex-col items-end gap-1">
+                      {/* Cambio US-11A: la US-12 habia reemplazado esta columna y se perdieron los
+                          links de Reprogramar (US-11B) y Editar tarifas (US-11A). Solo en vuelos
+                          programados o demorados que todavia no salieron. */}
+                      {f.reschedulable && (
+                        <>
+                          <Link className={ACTION_LINK} href={`/admin/vuelos/${f.id}/reprogramar`}>
+                            <span className="material-symbols-outlined text-[16px]">edit_calendar</span>
+                            Reprogramar
+                          </Link>
+                          <Link className={ACTION_LINK} href={`/admin/vuelos/${f.id}/tarifas`}>
+                            <span className="material-symbols-outlined text-[16px]">sell</span>
+                            Editar tarifas
+                          </Link>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => onCancelFlight(f)}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-error hover:bg-error-container/60 text-xs font-semibold transition-colors border border-transparent hover:border-error/20"
+                        title="Cancelar este vuelo y retirar de la oferta comercial"
+                      >
+                        <span className="material-symbols-outlined text-[15px]">cancel</span>
+                        Cancelar
+                      </button>
+                    </div>
                   )}
                 </td>
               </tr>
@@ -234,7 +254,9 @@ function DraftsSection({ drafts, onChanged }: { drafts: SerializedSchedule[]; on
     } catch (err) {
       setError({
         message: err instanceof Error ? err.message : 'No se pudo completar la acción',
-        details: err instanceof ApiRequestError ? detailMessages(err.details) : [],
+        // Cambio BUG-02 (RF-01): un choque al publicar muestra solo el mensaje corto, sin la
+        // lista por vuelo. Se habia perdido con el cambio de la US-12.
+        details: errorDetails(err),
       });
     } finally {
       setBusyId(null);
