@@ -523,6 +523,7 @@ model Booking {
   @@index([status])
   @@index([expiresAt])
   @@index([createdAt])
+  @@index([createdAt, status], map: "bookings_created_at_status_idx")
   @@map("bookings")
 }
 

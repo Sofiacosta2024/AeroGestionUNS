@@ -11,6 +11,7 @@ const LINKS = [
   { href: '/admin/tarifas', label: 'Adicionales por asiento' },
   { href: '/admin/contingencias', label: 'Contingencias' },
   { href: '/admin/reservas', label: 'Gestión de reservas' },
+  { href: '/admin/reportes/analitico', label: 'Reportes analíticos' },
   { href: '/vuelos', label: 'Volver a los vuelos' },
 ] as const;
 

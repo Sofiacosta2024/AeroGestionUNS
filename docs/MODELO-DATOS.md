@@ -108,7 +108,7 @@ FlightSchedule (RF-01) ──► Route, Aircraft, User (creador)
 - **Nombres en español, columnas en `snake_case`.** Los modelos usan PascalCase y
   `@@map` los lleva a `snake_case`, con índices para los accesos del buscador
   (`flights(route_id, departure_at)`, `flight_fares(fare_id)`, `bookings(user_id)`,
-  `audit_logs(created_at)`).
+  `bookings(created_at, status)` para reportes por fecha de compra y `audit_logs(created_at)`).
 
 - **Clases y cabinas (RF-01).** Hay 3 clases, cada una es una tarifa activa del catálogo:
   **Economy** (`ECON-BASIC`, solo mochila), **Economy Premium** (`ECON-FLEX`, carry-on +
@@ -116,6 +116,10 @@ FlightSchedule (RF-01) ──► Route, Aircraft, User (creador)
   **cabina física** donde se sienta el pasajero: Economy y Economy Premium comparten la
   cabina `ECONOMY`; Primera Clase usa la cabina `FIRST` (fila 1 del mapa). Los asientos que
   ofrece un vuelo se topean por cabina contra el mapa de la aeronave.
+- **Reportes analíticos (US-09B).** `GET /api/v1/admin/reportes/analitico` filtra por
+  fecha de compra (`bookings.created_at`), ruta y tarifa comercial. Consolida pasajes
+  pagos, facturación bruta y ocupación por cabina física; el parámetro `format=csv`
+  descarga el mismo desglose en CSV.
 - **Cronogramas y publicación (RF-01).** Lo que carga el admin es un `flight_schedule`.
   En borrador no existen vuelos; al publicar se generan las filas de `flights` y
   `flight_fares`. Así el buscador nunca ve borradores y no necesita filtrarlos.
