@@ -78,6 +78,9 @@ enum BookingStatus {
   COMPLETED
   NO_SHOW
   REPROGRAMACION_PENDIENTE
+  REASIGNACION_PROPUESTA
+  SIN_ALTERNATIVA
+  REPROGRAMADA
   REASIGNADO
 }
 
@@ -324,6 +327,7 @@ model Flight {
 
   fares         FlightFare[]
   bookingFlights BookingFlight[]
+  proposedBookings Booking[] @relation("ProposedBookings")
   seatLocks     SeatLock[]
 
   /// Una aeronave no puede tener dos salidas en el mismo instante (RF-01, factibilidad)
@@ -495,6 +499,12 @@ model Booking {
   currency        String        @default("ARS") @db.Char(3)
   contactEmail    String        @map("contact_email") @db.VarChar(160)
   contactPhone    String?       @map("contact_phone") @db.VarChar(32)
+  vueloOriginalId   String?       @map("vuelo_original_id") @db.VarChar(30)
+  vueloPropuestoId  String?       @map("vuelo_propuesto_id") @db.VarChar(30)
+  vueloPropuesto    Flight?       @relation("ProposedBookings", fields: [vueloPropuestoId], references: [id], onDelete: SetNull)
+  respuestaPasajero String?       @default("PENDIENTE") @map("respuesta_pasajero") @db.VarChar(20)
+  reembolsoPendiente Boolean      @default(false) @map("reembolso_pendiente")
+  propuestaMotivo   String?       @map("propuesta_motivo") @db.VarChar(200)
   notes           String?       @db.VarChar(500)
   /// Expiracion de la reserva temporal (5 minutos para completar el pago RF-03)
   expiresAt       DateTime?     @map("expires_at") @db.Timestamptz(3)

@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { requireAdminPage } from '../../require-admin';
-import { getPasajerosAfectados } from '@/lib/contingencias';
+import { getReservasAfectadas } from '@/lib/contingencias';
 import ReallocationView from './reallocation-view';
 
 export const dynamic = 'force-dynamic';
@@ -14,7 +14,7 @@ export default async function ContingenciaDetailPage({ params }: Props) {
   const { id } = await params;
 
   try {
-    const data = await getPasajerosAfectados(id);
+    const data = await getReservasAfectadas(id);
 
     return (
       <ReallocationView
@@ -23,11 +23,17 @@ export default async function ContingenciaDetailPage({ params }: Props) {
           departureAt: data.flight.departureAt.toISOString(),
           arrivalAt: data.flight.arrivalAt.toISOString(),
         }}
-        passengers={data.passengers}
-        initialAlternativeFlights={data.alternativeFlights.map((f) => ({
-          ...f,
-          departureAt: f.departureAt.toISOString(),
-          arrivalAt: f.arrivalAt.toISOString(),
+        initialMetrics={data.metrics}
+        initialReservas={data.reservas.map((r) => ({
+          ...r,
+          createdAt: r.createdAt.toISOString(),
+          vueloPropuesto: r.vueloPropuesto
+            ? {
+                ...r.vueloPropuesto,
+                departureAt: r.vueloPropuesto.departureAt.toISOString(),
+                arrivalAt: r.vueloPropuesto.arrivalAt.toISOString(),
+              }
+            : null,
         }))}
       />
     );
