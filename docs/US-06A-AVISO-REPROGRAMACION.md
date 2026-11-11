@@ -101,12 +101,42 @@ el link usa esa variable.
 
 ## Para la US-06B (correo de cancelación)
 
-Se puede seguir el mismo camino:
+**Estado al 2026-11-11: no está hecho.** Cancelar un vuelo (`cancelarVuelo`, US-12A) hoy no
+manda ningún correo. La US-06B puede reusar casi todo lo de la US-06A y la US-13.
 
-1. Agregar `FLIGHT_CANCELLED` a `EmailKind`, con su migración.
-2. Crear un snapshot y una plantilla propios, como `itinerary-snapshot.ts` e `itinerary-template.ts`.
-3. Agregar una rama en `processor.ts`.
-4. Enviar con `sendEmail` de `provider.ts`.
+**Qué se puede reusar**
+
+| Qué | Dónde | Para qué |
+| --- | --- | --- |
+| Outbox, cola y worker | `email_dispatches`, `src/lib/email/queue.ts`, `workers/receipt-email.ts` | Lease, reintentos, webhook de entrega. No se toca nada. |
+| `EmailKind` | `prisma/schema.prisma` | Agregar `FLIGHT_CANCELLED`. Necesita una migración: la base es compartida, hay que avisar antes de aplicarla. |
+| Rama por `kind` | `src/lib/email/processor.ts` | Agregar la rama de `FLIGHT_CANCELLED` al lado de la de `ITINERARY_CHANGE`. |
+| `sendEmail` | `src/lib/email/provider.ts` | Envío por Resend sin adjuntos, con `Idempotency-Key`, timeout y `Retry-After`. Usarlo como `sendItineraryEmail`. |
+| Snapshot y plantilla | `src/lib/email/itinerary-snapshot.ts`, `itinerary-template.ts` | Molde para un snapshot propio (con `version`) y una plantilla con estilos en línea y `escapeHtml`. |
+| Encolado | `src/lib/email/itinerary-outbox.ts` (`enqueueItineraryChanges`) | Molde: `createMany` con `skipDuplicates` dentro de la transacción de la cancelación. |
+| A quién avisar | `src/lib/scheduling/repository.ts` (`findTicketedBookings`) | Reservas con pasaje del vuelo, con `contactEmail` y nombre del primer pasajero. |
+| Datos del vuelo | `src/lib/scheduling/repository.ts` (`loadFlightLeg`) | Código, origen, destino, horarios y aeronave para el correo. |
+| Link «Ver Mi Reserva» | `src/lib/scheduling/itinerary-notices.ts` (`bookingLookupUrl`) | `NEXT_PUBLIC_APP_URL` o el origen del pedido, más `/reserva`. |
+
+**Dónde va.** En `cancelarVuelo` de `src/lib/contingencias.ts`, dentro de su
+`prisma.$transaction`, igual que la US-11B. Así el correo solo se encola si la cancelación se
+guarda.
+
+**Ojo con el orden.** `cancelarVuelo` pasa las reservas activas a `REPROGRAMACION_PENDIENTE`, y ese
+estado no está en `TICKETED_STATUSES`. Hay que llamar a `findTicketedBookings` **antes** de ese
+cambio, en la misma transacción. Después ya no devuelve ninguna reserva.
+
+**Pasos**
+
+1. Agregar `FLIGHT_CANCELLED` a `EmailKind` y generar la migración.
+2. Crear el snapshot y la plantilla del correo de cancelación, según su wireframe.
+3. Agregar la rama en `processor.ts` y su función de envío con `sendEmail`.
+4. En `cancelarVuelo`, buscar las reservas, cambiar los estados y encolar un correo por reserva.
+   Usar `dedupeKey` = `cancel-${flightId}-${bookingId}`.
+5. Tests sin base, como `tests/itinerary-email.test.ts`: plantilla, `processor` y armado.
+
+El worker que esté corriendo tiene que tener ese código. Un worker anterior marcaría FALLIDO los
+correos nuevos.
 
 ## Configuración (`.env` o `.env.local`, sin commitear)
 
