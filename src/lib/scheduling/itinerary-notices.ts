@@ -7,8 +7,8 @@ import type { NoticeBooking } from './repository';
 
 /**
  * Avisos por email de un cambio de itinerario (US-06A). Los usa la reprogramacion de un vuelo
- * (US-11B) y estan listos para cuando una reserva quede REPROGRAMADA por la US-12B. Se encolan
- * dentro de la transaccion del cambio; el worker de la US-13 los envia.
+ * (US-11B). Tambien estan listos para la reasignacion de pasajeros de la US-12B, que todavia no
+ * los llama. Se encolan dentro de la transaccion del cambio y el worker de la US-13 los envia.
  */
 
 type Db = Prisma.TransactionClient;
@@ -79,8 +79,12 @@ export async function notifyFlightRescheduled(
 
 /**
  * Para la US-12B: avisa a una reserva que pasa del vuelo cancelado `fromFlightId` a
- * `toFlightId` (estado REPROGRAMADA). «Anterior» muestra el vuelo cancelado. Llamar dentro de
- * la transaccion de Confirmar o de Cambiar vuelo.
+ * `toFlightId`. En el correo, «Anterior» muestra el vuelo cancelado.
+ *
+ * Pendiente del equipo de la US-12B: llamarla una vez por reserva desde `reprogramarPasajeros`
+ * (src/lib/contingencias.ts), dentro de su `prisma.$transaction` y despues de marcar las reservas
+ * REASIGNADO. Hoy la reasignacion no manda correo. Ejemplo completo y verificacion en
+ * docs/US-06A-AVISO-REPROGRAMACION.md, seccion «Para la US-12B».
  */
 export async function notifyBookingRescheduled(
   db: Db,

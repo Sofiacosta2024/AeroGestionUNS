@@ -32,6 +32,8 @@ worker de comprobantes de la US-13, sin duplicar esa lógica.
 - **Qué lo dispara:** cualquier cambio de fecha, hora, aeronave o ruta guardado desde el
   panel (`PATCH /api/admin/flights/:id/itinerary`) o desde el endpoint previo
   `PATCH /api/flights/:id`.
+- **Qué todavía no lo dispara:** cancelar un vuelo y reasignar a sus pasajeros (US-12A/12B).
+  Ver [Para la US-12B](#para-la-us-12b-marcos-avisar-al-reasignar-pasajeros).
 - **Reservas sin aviso:** si el email no es válido o el código no tiene 6 caracteres (como
   las reservas de demo `AG-DEMOx`), la reserva queda sin aviso pero el cambio se guarda igual.
 - **Dos reprogramaciones** del mismo vuelo mandan dos correos, cada uno con su antes y su después.
@@ -46,23 +48,56 @@ Migración `20261108000000_us06a_email_kind`, ya aplicada en la base compartida:
 - `email_dispatches.kind`, que por defecto es `RECEIPT` (las filas anteriores son comprobantes);
 - `email_dispatches.payment_id` pasa a ser opcional.
 
-## Para la US-12B (Marcos)
+## Para la US-12B (Marcos): avisar al reasignar pasajeros
 
-Cuando una reserva quede `REPROGRAMADA` (con Confirmar o con Cambiar vuelo), llamar dentro de
-esa misma transacción:
+**Estado al 2026-11-11: pendiente, lo hace el equipo de la US-12B.** Hoy, cancelar un vuelo
+(US-12A) y reasignar sus pasajeros (US-12B) **no manda ningún correo**. La reserva pasa a
+`REASIGNADO`, la auditoría registra `PASSENGERS_REASSIGNED` y la outbox no recibe ninguna fila
+`ITINERARY_CHANGE`. Se verificó con una compra de prueba.
+
+La función de la US-06A ya está lista: `notifyBookingRescheduled`, en
+`src/lib/scheduling/itinerary-notices.ts`. Solo falta llamarla desde la reasignación.
+
+**Dónde va.** Va en `reprogramarPasajeros` de `src/lib/contingencias.ts`, dentro del
+`prisma.$transaction`, después del paso «4. Marcar todas las reservas como REASIGNADO». Tiene que
+ir en esa misma transacción para que el aviso solo se encole si la reasignación se guarda.
 
 ```ts
 import { notifyBookingRescheduled } from '@/lib/scheduling/itinerary-notices';
 
-await notifyBookingRescheduled(tx, {
-  bookingId,
-  fromFlightId: vueloCanceladoId, // «Anterior» del correo
-  toFlightId: vueloNuevoId,       // «Nuevo»
-  origin: new URL(req.url).origin,
-});
+// Dentro del $transaction, después de marcar REASIGNADO:
+for (const b of bookingsToReassign) {
+  await notifyBookingRescheduled(tx, {
+    bookingId: b.id,
+    fromFlightId: oldFlight.id, // vuelo cancelado: columna «Anterior» del correo
+    toFlightId: newFlight.id,   // vuelo nuevo: columna «Nuevo»
+    origin,                     // base del link «Ver Mi Reserva»
+  });
+}
 ```
 
-Devuelve `{ queued, skipped }`. No hay que tocar nada más: el worker manda el correo.
+**De dónde sale `origin`.** `reprogramarPasajeros` hoy no lo recibe. Hay que agregarle el
+parámetro `origin: string`. El handler `src/app/api/admin/vuelos/[id]/reprogramar-pasajeros/route.ts`
+le pasa `new URL(req.url).origin`, igual que la US-11B. Si `NEXT_PUBLIC_APP_URL` está definida,
+el link usa esa variable.
+
+**Qué más tener en cuenta**
+
+- Cada llamada devuelve `{ queued, skipped }`. Se puede sumar y devolver en el resultado o en la
+  auditoría, como hace la US-11B con `notifications`. Es opcional.
+- `REASIGNADO` cuenta como reserva con pasaje (`TICKETED_STATUSES`). Si después la US-11B
+  reprograma el vuelo nuevo, esa reserva también recibe aviso.
+- Una reserva con email inválido o código de demo (`AG-DEMOx`) devuelve `skipped: 1`. No tira
+  error ni frena la reasignación.
+- No hay que tocar nada más: el worker de la US-13 manda el correo.
+
+**Cómo verificarlo**
+
+1. Comprar un pasaje con el email de `RECEIPTS_TEST_RECIPIENT`.
+2. Cancelar ese vuelo desde la Planilla.
+3. Reasignar los pasajeros a otro vuelo desde `/admin/contingencias/:id`.
+4. En `email_dispatches` tiene que aparecer una fila `ITINERARY_CHANGE` por reserva.
+5. Con el worker corriendo, llega el correo con el vuelo cancelado tachado y el nuevo en verde.
 
 ## Para la US-06B (correo de cancelación)
 
