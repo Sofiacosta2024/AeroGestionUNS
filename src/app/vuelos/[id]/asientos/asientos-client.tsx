@@ -6,6 +6,14 @@ import Link from 'next/link';
 import type { CabinClass } from '@prisma/client';
 import type { FlightSeatView } from '@/lib/seat-locks';
 import { seatSelectionUnitFee } from '@/lib/seat-pricing';
+import {
+  emptyPassenger,
+  hasPassengerErrors,
+  normalizePassenger,
+  validatePassengers,
+  type PassengerFormData,
+  type PassengerFormErrors,
+} from '@/lib/passenger-form';
 
 const AVATAR =
   'https://lh3.googleusercontent.com/aida/AEtjO1WEhfaUl0efpt8MGhPU4BBSstKaHhbeJkOote0mUJ6_jYF6PAiF6FJ3oV7QSAdXoJj44L0BuwK0AMb8x9jtVQ3_fy7ZsUgPcH9cyj-MAcA7WCfUbepbSac9uc1dl-esKJHlvyljleDzT7OiNIG0e0zFh0Xe8ICzkK0eg0ZK6ZNHsIYEAclfRhCoKbMbUSqDQdarW6j9TqCWU1zKs56C4wu8KN0_Goo_-hECEtlTYqVYoNRpNtJjTTxrdHc';
@@ -104,6 +112,12 @@ export default function AsientosClient({
   });
 
   const [seats, setSeats] = useState<FlightSeatView[]>(initialSeats);
+  const [passengersData, setPassengersData] = useState<PassengerFormData[]>(() =>
+    Array.from({ length: initialPassengersCount }, () => emptyPassenger()),
+  );
+  const [passengerErrors, setPassengerErrors] = useState<PassengerFormErrors[]>(() =>
+    Array.from({ length: initialPassengersCount }, () => ({})),
+  );
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -268,6 +282,17 @@ export default function AsientosClient({
     }
   };
 
+  const updatePassenger = (index: number, field: keyof PassengerFormData, value: string) => {
+    const nextValue = field === 'documentNumber' ? value.replace(/\D/g, '').slice(0, 9) : value;
+    setPassengersData((prev) =>
+      prev.map((passenger, i) => (i === index ? { ...passenger, [field]: nextValue } : passenger)),
+    );
+    setPassengerErrors((prev) =>
+      prev.map((errors, i) => (i === index ? { ...errors, [field]: undefined } : errors)),
+    );
+    setErrorMessage(null);
+  };
+
   // Confirmar y continuar al Pago (Paso 3)
   const handleProceedToPayment = async () => {
     setErrorMessage(null);
@@ -280,14 +305,38 @@ export default function AsientosClient({
       return;
     }
 
+    if (passengersData.length !== selectedSeatIds.length) {
+      setErrorMessage('La cantidad de pasajeros no coincide con los asientos seleccionados.');
+      return;
+    }
+
+    const errors = validatePassengers(passengersData);
+    setPassengerErrors(errors);
+    if (hasPassengerErrors(errors)) {
+      setErrorMessage('Completá los datos de todos los pasajeros antes de continuar.');
+      const firstIndex = errors.findIndex((passengerErrors) => Object.keys(passengerErrors).length > 0);
+      const firstField = firstIndex >= 0
+        ? (['firstName', 'lastName', 'documentNumber'] as const).find(
+            (field) => errors[firstIndex]?.[field],
+          )
+        : undefined;
+      if (firstIndex >= 0 && firstField) {
+        document.getElementById(`passenger-${firstIndex}-${firstField}`)?.focus();
+      }
+      return;
+    }
+
     setSubmitting(true);
     try {
-      const passengersPayload = selectedSeatIds.map((_, i) => ({
-        firstName: `Pasajero`,
-        lastName: `${i + 1}`,
-        documentType: 'DNI' as const,
-        documentNumber: `4${Math.floor(1000000 + Math.random() * 9000000)}`,
-      }));
+      const passengersPayload = selectedSeatIds.map((_, i) => {
+        const passenger = normalizePassenger(passengersData[i]!);
+        return {
+          firstName: passenger.firstName,
+          lastName: passenger.lastName,
+          documentType: 'DNI' as const,
+          documentNumber: passenger.documentNumber,
+        };
+      });
 
       const res = await fetch(`/api/flights/${flight.id}/lock-seats`, {
         method: 'POST',
@@ -957,11 +1006,16 @@ export default function AsientosClient({
 
             {/* CARD 2: ASIGNACIÓN POR PASAJERO */}
             <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm space-y-4">
-              <h3 className="text-xs font-black uppercase text-[#170040] tracking-wider">
-                ASIGNACIÓN POR PASAJERO
-              </h3>
+              <div>
+                <h3 className="text-xs font-black uppercase text-[#170040] tracking-wider">
+                  ASIGNACIÓN POR PASAJERO
+                </h3>
+                <p className="text-[11px] text-gray-500 font-medium mt-1">
+                  Completá nombre, apellido y DNI tal como figuran en el documento de cada pasajero.
+                </p>
+              </div>
 
-              {/* Lista de pasajeros y butacas */}
+              {/* Datos de pasajeros y butacas */}
               <div className="space-y-3">
                 {Array.from({ length: passengersCount }).map((_, i) => {
                   const assignedSeatId = selectedSeatIds[i];
@@ -983,32 +1037,136 @@ export default function AsientosClient({
                     ? getSeatAdditionalPrice(assignedSeat, currentFare)
                     : null;
 
+                  const passenger = passengersData[i] ?? emptyPassenger();
+                  const fieldErrors = passengerErrors[i] ?? {};
+
                   return (
-                    <div key={i} className="flex items-center justify-between py-1 border-b border-gray-50 last:border-0">
-                      <div className="flex items-center gap-3">
-                        {/* Avatar */}
-                        <div className="w-9 h-9 rounded-full bg-[#1e0a45] text-white font-black text-xs flex items-center justify-center shrink-0 shadow-sm">
-                          P{i + 1}
+                    <div
+                      key={i}
+                      className="rounded-xl border border-gray-100 bg-[#fafafe] p-3 space-y-2.5"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-full bg-[#1e0a45] text-white font-black text-[11px] flex items-center justify-center shrink-0 shadow-sm">
+                            P{i + 1}
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-[#170040]">
+                              Pasajero {i + 1}
+                            </div>
+                            <div className="text-[11px] text-gray-500 font-medium">
+                              {seatPosition} · {currentFare?.name ?? 'Economy'}
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="text-xs font-bold text-[#170040]">
-                            Pasajero {i + 1}
+
+                        <div className="text-right shrink-0">
+                          <div
+                            className={`${
+                              assignedSeat ? 'bg-[#E11D48]' : 'bg-gray-300'
+                            } text-white font-extrabold text-xs px-3 py-1 rounded-lg text-center shadow-sm`}
+                          >
+                            {seatLabel}
                           </div>
-                          <div className="text-[11px] text-gray-500 font-medium">Adulto · Pasajero {i + 1}</div>
-                          <div className="text-[11px] font-bold text-[#E11D48]">
-                            {seatPosition} · {currentFare?.name ?? 'Economy'}
-                          </div>
+                          <span className="text-[10px] text-gray-500 font-medium block mt-0.5">
+                            {assignedSeat ? seatPricing?.label : '-'}
+                          </span>
                         </div>
                       </div>
 
-                      {/* Pill del Asiento */}
-                      <div className="text-right">
-                        <div className="bg-[#E11D48] text-white font-extrabold text-xs px-3 py-1 rounded-lg text-center shadow-sm">
-                          {seatLabel}
-                        </div>
-                        <span className="text-[10px] text-gray-500 font-medium block mt-0.5">
-                          {assignedSeat ? seatPricing?.label : '-'}
-                        </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <label className="block">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                            Nombre
+                          </span>
+                          <input
+                            id={`passenger-${i}-firstName`}
+                            type="text"
+                            autoComplete="given-name"
+                            maxLength={80}
+                            value={passenger.firstName}
+                            onChange={(e) => updatePassenger(i, 'firstName', e.target.value)}
+                            aria-invalid={!!fieldErrors.firstName}
+                            aria-describedby={
+                              fieldErrors.firstName ? `passenger-${i}-firstName-error` : undefined
+                            }
+                            className={`mt-1 w-full rounded-lg border bg-white px-3 py-2 text-xs font-semibold text-[#170040] outline-none transition-colors focus:border-[#E11D48] focus:ring-2 focus:ring-rose-100 ${
+                              fieldErrors.firstName ? 'border-red-400' : 'border-gray-200'
+                            }`}
+                            placeholder="Nombre"
+                          />
+                          {fieldErrors.firstName && (
+                            <span
+                              id={`passenger-${i}-firstName-error`}
+                              className="mt-1 block text-[10px] font-semibold text-red-600"
+                            >
+                              {fieldErrors.firstName}
+                            </span>
+                          )}
+                        </label>
+
+                        <label className="block">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                            Apellido
+                          </span>
+                          <input
+                            id={`passenger-${i}-lastName`}
+                            type="text"
+                            autoComplete="family-name"
+                            maxLength={80}
+                            value={passenger.lastName}
+                            onChange={(e) => updatePassenger(i, 'lastName', e.target.value)}
+                            aria-invalid={!!fieldErrors.lastName}
+                            aria-describedby={
+                              fieldErrors.lastName ? `passenger-${i}-lastName-error` : undefined
+                            }
+                            className={`mt-1 w-full rounded-lg border bg-white px-3 py-2 text-xs font-semibold text-[#170040] outline-none transition-colors focus:border-[#E11D48] focus:ring-2 focus:ring-rose-100 ${
+                              fieldErrors.lastName ? 'border-red-400' : 'border-gray-200'
+                            }`}
+                            placeholder="Apellido"
+                          />
+                          {fieldErrors.lastName && (
+                            <span
+                              id={`passenger-${i}-lastName-error`}
+                              className="mt-1 block text-[10px] font-semibold text-red-600"
+                            >
+                              {fieldErrors.lastName}
+                            </span>
+                          )}
+                        </label>
+
+                        <label className="block sm:col-span-2">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                            DNI
+                          </span>
+                          <input
+                            id={`passenger-${i}-documentNumber`}
+                            type="text"
+                            inputMode="numeric"
+                            autoComplete="off"
+                            maxLength={9}
+                            value={passenger.documentNumber}
+                            onChange={(e) => updatePassenger(i, 'documentNumber', e.target.value)}
+                            aria-invalid={!!fieldErrors.documentNumber}
+                            aria-describedby={
+                              fieldErrors.documentNumber
+                                ? `passenger-${i}-documentNumber-error`
+                                : undefined
+                            }
+                            className={`mt-1 w-full rounded-lg border bg-white px-3 py-2 text-xs font-semibold text-[#170040] outline-none transition-colors focus:border-[#E11D48] focus:ring-2 focus:ring-rose-100 ${
+                              fieldErrors.documentNumber ? 'border-red-400' : 'border-gray-200'
+                            }`}
+                            placeholder="Número de documento"
+                          />
+                          {fieldErrors.documentNumber && (
+                            <span
+                              id={`passenger-${i}-documentNumber-error`}
+                              className="mt-1 block text-[10px] font-semibold text-red-600"
+                            >
+                              {fieldErrors.documentNumber}
+                            </span>
+                          )}
+                        </label>
                       </div>
                     </div>
                   );

@@ -2,7 +2,7 @@ import { handler, ok, parseBody } from '@/lib/api';
 import { audit } from '@/lib/audit';
 import { getCurrentUser } from '@/lib/auth';
 import { lockSeatsAtomic } from '@/lib/seat-locks';
-import { lockSeatsSchema } from '@/lib/validation';
+import { webLockSeatsSchema } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +18,7 @@ type Ctx = { params: Promise<{ id: string }> };
 export const POST = handler(async (req: Request, ctx: Ctx) => {
   const { id } = await ctx.params;
   const user = await getCurrentUser();
-  const body = await parseBody(req, lockSeatsSchema);
+  const body = await parseBody(req, webLockSeatsSchema);
 
   const result = await lockSeatsAtomic({
     flightId: id,

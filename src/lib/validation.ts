@@ -451,6 +451,18 @@ export const lockSeatsSchema = z.object({
     .optional(),
 });
 
+/**
+ * Variante del flujo web: exige un pasajero con datos nominales por cada asiento.
+ * Se mantiene separada de `lockSeatsSchema` para no alterar el contrato de US-10A.
+ */
+export const webLockSeatsSchema = lockSeatsSchema.refine(
+  (d) => !!d.passengers && d.passengers.length === d.seatIds.length,
+  {
+    message: 'Debe enviar los datos de todos los pasajeros seleccionados',
+    path: ['passengers'],
+  },
+);
+
 export const bookingUpdateSchema = z
   .object({
     status: bookingStatusEnum.optional(),

@@ -9,7 +9,7 @@ import {
   lockSeatsAtomic,
   releaseExpiredSeatLocks,
 } from '../src/lib/seat-locks';
-import { lockSeatsSchema } from '../src/lib/validation';
+import { lockSeatsSchema, webLockSeatsSchema } from '../src/lib/validation';
 import { settlePayment } from '../src/lib/payment-service';
 import { paymentSchema } from '../src/lib/validation';
 
@@ -42,6 +42,26 @@ test('RF-03: esquema de validación controla entre 1 y hasta 9 asientos', () => 
   // 10 asientos: rechazado
   const tenSeats = Array.from({ length: 10 }, (_, i) => `c12345678901234567890123${i < 10 ? '0' + i : i}`);
   assert.equal(lockSeatsSchema.safeParse({ ...base, seatIds: tenSeats }).success, false);
+});
+
+test('RF-03: el flujo web exige un pasajero con datos por cada asiento', () => {
+  const base = {
+    fareId: validCuid,
+    contactEmail: 'pasajero@example.com',
+    seatIds: [validSeat1, validSeat2],
+  };
+  const passenger = { firstName: 'Ana', lastName: 'Gómez', documentNumber: '39112804' };
+
+  assert.equal(webLockSeatsSchema.safeParse(base).success, false);
+  assert.equal(
+    webLockSeatsSchema.safeParse({ ...base, passengers: [passenger] }).success,
+    false,
+  );
+  assert.equal(
+    webLockSeatsSchema.safeParse({ ...base, passengers: [passenger, { ...passenger, documentNumber: '30111222' }] })
+      .success,
+    true,
+  );
 });
 
 function createMockSeatLockTx(overrides: {
