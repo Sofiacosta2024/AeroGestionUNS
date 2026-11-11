@@ -148,4 +148,4 @@ en `comprobantes`. Se completan con el backfill de una corrida
 
 ## Extensión US-08 / US-13
 
-`CounterSale` registra operador, sucursal y requestId/payloadHash únicos por venta; `Fare.seatSelectionFee` configura recargo manual Economy; `BookingFlight.seatSelectionAmount` conserva el recargo pactado. `EmailDispatch` persiste outbox y snapshot inmutable; `EmailDispatchAttempt` conserva intentos. Estados PENDIENTE/ENVIADO/FALLIDO; aceptación, entrega y rebote se registran por separado. Ver [US08-US13.md](US08-US13.md).
+`CounterSale` registra operador, sucursal y requestId/payloadHash únicos por venta; `Fare.seatSelectionFee` configura recargo manual Economy; `BookingFlight.seatSelectionAmount` conserva el recargo pactado. `EmailDispatch` persiste outbox y snapshot inmutable; `EmailDispatchAttempt` conserva intentos. *Cambio US-06A:* `kind` distingue comprobantes (`RECEIPT`) de avisos de reprogramación (`ITINERARY_CHANGE`), y `paymentId` es opcional porque un aviso no sale de un pago. Estados PENDIENTE/ENVIADO/FALLIDO; aceptación, entrega y rebote se registran por separado. Ver [US08-US13.md](US08-US13.md).

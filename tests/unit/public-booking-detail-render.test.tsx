@@ -9,6 +9,7 @@ import {
   pdfFilenameFromDisposition,
 } from '../../src/app/reserva/consulta-client';
 import type { PublicBookingView } from '../../src/lib/public-booking-view';
+import { CONTINGENCY_REPROGRAMMING_MESSAGE } from '../../src/lib/contingency-status';
 
 /**
  * Pruebas de la vista de detalle (US-14A). Renderizan el componente real a
@@ -129,6 +130,52 @@ test('reprogramacion: muestra el boton con check-in abierto y en la fila de PDFs
   assert.match(html, /grid grid-cols-1 gap-3 border-t border-outline-variant\/60 pt-4 sm:grid-cols-3/);
   assert.ok(html.indexOf('Reprogramar vuelo') < html.indexOf('Descargar Pasaje PDF'));
   assert.ok(html.indexOf('Reprogramar vuelo') < html.indexOf('Descargar Factura PDF'));
+});
+
+test('reprogramacion: reserva en contingencia muestra el aviso y oculta el boton', () => {
+  const futureFlight = {
+    ...sampleBooking().flights[0]!,
+    departureAt: '2099-11-18T09:45:00.000Z',
+    arrivalAt: '2099-11-18T10:55:00.000Z',
+  };
+
+  for (const status of ['REPROGRAMACION_PENDIENTE', 'REASIGNACION_PROPUESTA', 'SIN_ALTERNATIVA']) {
+    const booking = sampleBooking({
+      status,
+      flights: [futureFlight],
+      passengers: sampleBooking().passengers.map((passenger) => ({
+        ...passenger,
+        checkInStatus: 'OPEN',
+      })),
+    });
+    const html = render(booking);
+
+    assert.ok(
+      html.includes(CONTINGENCY_REPROGRAMMING_MESSAGE),
+      `${status}: debe mostrar el aviso de contingencia`,
+    );
+    assert.doesNotMatch(html, /Reprogramar vuelo/, `${status}: no debe ofrecer reprogramar`);
+    // La gestión de contingencia solo bloquea la reprogramación: los
+    // comprobantes siguen disponibles.
+    assert.match(html, /Descargar Pasaje PDF/);
+    assert.match(html, /Descargar Factura PDF/);
+  }
+});
+
+test('reprogramacion: una reserva confirmada no muestra el aviso de contingencia', () => {
+  const booking = sampleBooking({
+    flights: [
+      {
+        ...sampleBooking().flights[0]!,
+        departureAt: '2099-11-18T09:45:00.000Z',
+        arrivalAt: '2099-11-18T10:55:00.000Z',
+      },
+    ],
+  });
+  const html = render(booking);
+
+  assert.ok(!html.includes(CONTINGENCY_REPROGRAMMING_MESSAGE));
+  assert.match(html, /Reprogramar vuelo/);
 });
 
 test('reprogramacion: oculta el boton si el check-in está completado', () => {

@@ -14,14 +14,15 @@ type Ctx = { params: Promise<{ id: string }> };
  *
  * Reprograma un vuelo publicado (US-11B): fecha, hora de salida, ruta y avion. La llegada
  * se calcula. Si choca con otro vuelo responde 409; si la ruta o el avion no se pueden
- * cambiar, 422. Deja el antes y el despues en la auditoria.
+ * cambiar, 422. Deja el antes y el despues en la auditoria y encola el aviso por email a cada
+ * reserva con pasaje (US-06A).
  */
 export const PATCH = handler(async (req: Request, ctx: Ctx) => {
   const user = await requireRole(UserRole.ADMIN);
   const { id } = await ctx.params;
   const input = await parseBody(req, flightRescheduleSchema);
 
-  const result = await rescheduleFlight(id, input);
+  const result = await rescheduleFlight(id, input, { origin: new URL(req.url).origin });
 
   await audit({
     userId: user.id,
@@ -33,6 +34,7 @@ export const PATCH = handler(async (req: Request, ctx: Ctx) => {
       after: result.after,
       affectedPassengers: result.affectedPassengers,
       resizedClasses: result.resizedClasses,
+      notifications: result.notifications,
     },
   });
 

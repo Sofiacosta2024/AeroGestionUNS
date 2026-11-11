@@ -25,6 +25,7 @@ const fullDay = (date: string) => `${formatWeekday(date)} ${formatFullDate(date)
 /** yyyy-mm-dd -> dd/mm/yyyy, como en el WF-11B. */
 const shortDate = (date: string) => date.split('-').reverse().join('/');
 const unique = (messages: string[]) => [...new Set(messages)];
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 const INVALID = 'border-rose-500 ring-2 ring-rose-200';
 
@@ -309,8 +310,16 @@ function DonePanel({ result }: { result: RescheduleResult }) {
         <span>
           {result.affectedPassengers === 0
             ? 'El vuelo no tenía pasajeros con reserva activa.'
-            : `${result.affectedPassengers} ${result.affectedPassengers === 1 ? 'pasajero recibirá' : 'pasajeros recibirán'} la reprogramación.`}
+            : `Se encoló el aviso por email a ${plural(result.notifications.queued, 'reserva', 'reservas')} ` +
+              `(${plural(result.affectedPassengers, 'pasajero', 'pasajeros')}).`}
         </span>
+        {/* US-06A: reservas cuyo email o codigo no sirven para el correo (ej. las de demo AG-DEMOx). */}
+        {result.notifications.skipped > 0 && (
+          <span>
+            {plural(result.notifications.skipped, 'reserva quedó', 'reservas quedaron')} sin aviso porque sus datos de
+            contacto no son válidos para el correo.
+          </span>
+        )}
         <Link className="underline font-bold w-fit" href={`/admin/itinerario?date=${result.date}`}>
           Ver la planilla del {fullDay(result.date)}
         </Link>

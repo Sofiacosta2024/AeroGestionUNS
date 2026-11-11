@@ -8,6 +8,10 @@ import { prisma } from '@/lib/prisma';
 import { findPublicBooking, toPublicBookingView } from '@/lib/public-booking';
 import { bookingReprogramSchema } from '@/lib/validation';
 import { toUtcRange } from '@/lib/dates';
+import {
+  CONTINGENCY_REPROGRAMMING_MESSAGE,
+  isContingencyBookingStatus,
+} from '@/lib/contingency-status';
 
 export const dynamic = 'force-dynamic';
 
@@ -159,7 +163,13 @@ export const POST = handler(async (req: Request) => {
         passengers: { include: { seat: true, boardingPass: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
       },
     });
-    if (!lockedBooking || !REBOOKABLE_STATUSES.includes(lockedBooking.status)) {
+    if (!lockedBooking) {
+      throw ApiError.conflict('La reserva ya no se encuentra disponible para reprogramar.');
+    }
+    if (isContingencyBookingStatus(lockedBooking.status)) {
+      throw ApiError.conflict(CONTINGENCY_REPROGRAMMING_MESSAGE);
+    }
+    if (!REBOOKABLE_STATUSES.includes(lockedBooking.status)) {
       throw ApiError.conflict('La reserva ya no se encuentra disponible para reprogramar.');
     }
     if (lockedBooking.flights.length !== 1) {
@@ -339,6 +349,9 @@ function assertRebookable(
   flightStatus: FlightStatus,
   passengers: Array<{ checkInStatus: string; seatId: string | null }>,
 ) {
+  if (isContingencyBookingStatus(booking.status)) {
+    throw ApiError.conflict(CONTINGENCY_REPROGRAMMING_MESSAGE);
+  }
   if (!REBOOKABLE_STATUSES.includes(booking.status)) {
     throw ApiError.conflict('Solo se pueden reprogramar reservas confirmadas o pagadas.');
   }

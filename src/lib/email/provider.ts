@@ -1,23 +1,42 @@
 import { buildReceiptAttachments } from './receipt-attachments';
 import { renderReceiptEmail } from './receipt-template';
+import { renderItineraryChangeEmail } from './itinerary-template';
+import type { ItinerarySnapshot } from './itinerary-snapshot';
 import type { ReceiptSnapshot } from './types';
 import { receiptSender } from './config';
 export class DeliveryError extends Error {
   constructor(message: string, public retryable: boolean, public retryAfterMs = 0) { super(message); }
 }
-export async function sendReceiptEmail(snapshot: ReceiptSnapshot, idempotencyKey: string,
-  options: { apiKey?: string; from?: string; fetch?: typeof fetch } = {}) {
+type SendOptions = { apiKey?: string; from?: string; fetch?: typeof fetch };
+type Attachment = { filename: string; content: string; content_type: string };
+export type OutgoingEmail = { to: string; subject: string; html: string; text: string; attachments?: Attachment[] };
+
+export async function sendReceiptEmail(snapshot: ReceiptSnapshot, idempotencyKey: string, options: SendOptions = {}) {
+  return sendEmail({ to: snapshot.recipient, ...renderReceiptEmail(snapshot),
+    attachments: buildReceiptAttachments(snapshot).map(a => ({ filename: a.filename, content: a.content, content_type: a.contentType })) },
+  idempotencyKey, options);
+}
+
+/** Aviso de reprogramacion (US-06A, WF-06A): sin adjuntos. */
+export async function sendItineraryEmail(snapshot: ItinerarySnapshot, idempotencyKey: string, options: SendOptions = {}) {
+  return sendEmail({ to: snapshot.recipient, ...renderItineraryChangeEmail(snapshot) }, idempotencyKey, options);
+}
+
+/**
+ * Cambio US-06A: el envio a Resend se separo de `sendReceiptEmail` para reusarlo con los avisos
+ * de reprogramacion. Mismo timeout, Idempotency-Key, Retry-After y errores que antes.
+ */
+export async function sendEmail(email: OutgoingEmail, idempotencyKey: string, options: SendOptions = {}) {
   const apiKey = options.apiKey ?? process.env.RESEND_API_KEY;
   const from = receiptSender(options.from);
   if (!apiKey || !from) throw new DeliveryError('Configure RESEND_API_KEY y RESEND_FROM', false);
-  const content = renderReceiptEmail(snapshot);
+  const { to, ...content } = email;
   let response: Response;
   try {
     response = await (options.fetch ?? fetch)('https://api.resend.com/emails', {
       method: 'POST', signal: AbortSignal.timeout(10000), headers: {
         Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey,
-      }, body: JSON.stringify({ from, to: [snapshot.recipient], ...content,
-        attachments: buildReceiptAttachments(snapshot).map(a => ({ filename: a.filename, content: a.content, content_type: a.contentType })) }),
+      }, body: JSON.stringify({ from, to: [to], ...content }),
     });
   } catch { throw new DeliveryError('No se pudo confirmar la respuesta del proveedor', true); }
   if (!response.ok) {
