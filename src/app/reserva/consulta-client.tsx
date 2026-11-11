@@ -2,6 +2,10 @@
 
 import React, { useState, type FormEvent } from 'react';
 import { bookingPublicLookupSchema } from '@/lib/validation';
+import {
+  CONTINGENCY_REPROGRAMMING_MESSAGE,
+  isContingencyBookingStatus,
+} from '@/lib/contingency-status';
 import { formatArs, formatDayMonth, formatTime } from '@/lib/format';
 import {
   bookingStatusPresentation,
@@ -466,7 +470,9 @@ export function ReservaDetalle({
   const passengerCount = booking.passengersCount ?? booking.passengers.length;
   const currentFlight = booking.flights[0];
   const preservedSeat = Boolean(currentFlight?.fare?.seatSelection);
+  const isContingency = isContingencyBookingStatus(booking.status);
   const canRebook = Boolean(
+    !isContingency &&
     currentFlight &&
     booking.flights.length === 1 &&
     ['CONFIRMED', 'PAID'].includes(booking.status) &&
@@ -536,14 +542,6 @@ export function ReservaDetalle({
       });
       const body = (await response.json().catch(() => null)) as RebookingConfirmResponse | RebookingErrorResponse | null;
       if (!response.ok || !body || body.ok !== true) {
-        setSelectedRebooking(null);
-        setSelectedSeatIds([]);
-        setRebookingFlights((flights) => flights
-          .map((flight) => ({
-            ...flight,
-            fares: flight.fares.filter((fare) => `${flight.id}:${fare.id}` !== selectedRebooking),
-          }))
-          .filter((flight) => flight.fares.length > 0));
         setRebookingError(body?.ok === false ? body.error.message : 'No se pudo confirmar el cambio. Busque otra alternativa.');
         return;
       }
@@ -592,6 +590,16 @@ export function ReservaDetalle({
           {status.label}
         </span>
       </div>
+
+      {isContingency && (
+        <div
+          className="rounded-lg border border-secondary/30 bg-error-container px-4 py-3 text-on-error-container"
+          role="alert"
+        >
+          <p className="font-label-lg text-label-lg font-bold">Reprogramación no disponible</p>
+          <p className="font-body-sm text-body-sm">{CONTINGENCY_REPROGRAMMING_MESSAGE}</p>
+        </div>
+      )}
 
       <div className="flex flex-col gap-3">
         {booking.flights.map((flight, index) => {
@@ -850,7 +858,7 @@ function tomorrowInArgentina() {
   return tomorrow.toISOString().slice(0, 10);
 }
 
-function RebookingModal({
+export function RebookingModal({
   cabin, date, error, flights, loading, onCancel, onConfirm, onDateChange, onSearch,
   onSelect, onSeatChange, passengers, passengerCount, preservedSeat, selected, selectedSeatIds, route,
 }: {
@@ -872,6 +880,10 @@ function RebookingModal({
   selectedSeatIds: string[];
   route: string;
 }) {
+  const selectedFlight = selected
+    ? flights.find((flight) => flight.id === selected.split(':')[0])
+    : undefined;
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#1A1038]/60 p-3 sm:p-6" role="presentation">
       <section
@@ -886,23 +898,16 @@ function RebookingModal({
               Reprogramar vuelo
             </h2>
             <p className="mt-1 font-body-sm text-body-sm text-on-surface-variant">
-              Vuelos futuros para la misma ruta: {route}.
+              Solo se muestran vuelos con cupo en tu clase contratada.
             </p>
+            <p className="font-body-sm text-body-sm text-on-surface-variant">Ruta: {route}</p>
           </div>
           <button aria-label="Cerrar" className="rounded-md p-2 text-outline hover:bg-surface-container-low" onClick={onCancel} type="button">
             <span aria-hidden="true" className="material-symbols-outlined">close</span>
           </button>
         </div>
 
-        <div className="mt-4 rounded-lg border border-outline-variant bg-surface-container-low p-3 font-body-sm text-body-sm text-on-surface">
-          Tu clase: <strong>{cabin}</strong>. Se muestran vuelos con al menos {passengerCount} lugares libres en esa clase.
-        </div>
-        {preservedSeat && (
-          <div className="mt-3 rounded-lg border border-outline-variant bg-secondary-container/10 p-3 font-body-sm text-body-sm text-on-surface">
-            Ya abonaste la elección de asiento. Seleccioná un asiento libre para cada pasajero sin volver a pagar el adicional.
-          </div>
-        )}
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
           <label className="font-label-sm text-label-sm font-bold text-outline" htmlFor="rebooking-date">
             Nueva fecha
             <input
@@ -914,22 +919,31 @@ function RebookingModal({
               value={date}
             />
           </label>
+          <label className="font-label-sm text-label-sm font-bold text-outline" htmlFor="rebooking-cabin">
+            Clase contratada (fija)
+            <input
+              className="mt-1 block h-11 w-full cursor-not-allowed rounded-lg border border-outline-variant bg-surface-container px-3 text-on-surface-variant"
+              id="rebooking-cabin"
+              readOnly
+              type="text"
+              value={cabin}
+            />
+          </label>
           <button className="h-11 rounded-lg border border-outline-variant bg-surface-container-low px-5 font-label-lg text-label-lg font-bold text-primary-container disabled:opacity-60" disabled={loading || date <= todayInArgentina()} onClick={onSearch} type="button">
-            {loading ? 'Buscando…' : 'Buscar vuelos'}
+            {loading ? 'Buscando…' : 'Buscar'}
           </button>
         </div>
 
         {flights.length > 0 && (
           <div className="mt-4 overflow-x-auto rounded-lg border border-outline-variant">
-            <table className="w-full min-w-[620px] border-collapse text-left font-body-sm text-body-sm">
+            <table className="w-full min-w-[560px] border-collapse text-left font-body-sm text-body-sm">
               <thead className="bg-surface-container-low text-outline">
                 <tr>
-                  <th className="px-3 py-2">Elegir</th>
+                  <th className="px-3 py-2"><span className="sr-only">Elegir</span></th>
                   <th className="px-3 py-2">Vuelo</th>
                   <th className="px-3 py-2">Salida</th>
                   <th className="px-3 py-2">Llegada</th>
-                  <th className="px-3 py-2">Tarifa {cabin}</th>
-                  <th className="px-3 py-2">Lugares</th>
+                  <th className="px-3 py-2">{`${cabin} libres`}</th>
                 </tr>
               </thead>
               <tbody>
@@ -944,8 +958,7 @@ function RebookingModal({
                       <td className="px-3 py-3 font-bold text-primary-container">{flight.code}</td>
                       <td className="px-3 py-3">{formatDayMonth(flight.departureAt)} · {formatTime(flight.departureAt)}</td>
                       <td className="px-3 py-3">{formatTime(flight.arrivalAt)}</td>
-                      <td className="px-3 py-3">{fare.name}</td>
-                      <td className="px-3 py-3">{fare.seatsAvailable} libres</td>
+                      <td className="px-3 py-3 font-bold text-primary-container">{fare.seatsAvailable}</td>
                     </tr>
                   );
                 }))}
@@ -954,45 +967,63 @@ function RebookingModal({
           </div>
         )}
 
-        {preservedSeat && selected && (() => {
-          const selectedFlight = flights.find((flight) => flight.id === selected.split(':')[0]);
-          if (!selectedFlight) return null;
-          return (
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {preservedSeat && selectedFlight && (
+          <div className="mt-4 rounded-lg border border-outline-variant bg-secondary-container/10 p-3">
+            <p className="font-body-sm text-body-sm font-semibold text-on-surface">
+              Adicional de asiento ya abonado: elegí nueva ubicación sin costo extra.
+            </p>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
               {passengers.map((passenger, index) => (
-                <label className="font-label-sm text-label-sm font-bold text-outline" htmlFor={`replacement-seat-${index}`} key={`${passenger.lastName}-${index}`}>
-                  Asiento para {passengerName(passenger.firstName, passenger.lastName) || `Pasajero ${index + 1}`}
-                  <select
-                    className="mt-1 block h-11 w-full rounded-lg border border-outline-variant bg-surface-container-low px-3 text-on-surface"
-                    id={`replacement-seat-${index}`}
-                    onChange={(event) => onSeatChange(index, event.target.value)}
-                    value={selectedSeatIds[index] ?? ''}
-                  >
-                    <option value="" disabled>Seleccione un asiento</option>
-                    {selectedFlight.availableSeats.map((seat) => (
-                      <option
-                        disabled={selectedSeatIds.some((chosen, chosenIndex) => chosen === seat.id && chosenIndex !== index)}
-                        key={seat.id}
-                        value={seat.id}
-                      >
-                        {seat.label}{seat.label === passenger.seatNumber ? ' · asiento actual' : ''}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <fieldset className="min-w-0" key={`${passenger.lastName}-${index}`}>
+                  <legend className="font-label-sm text-label-sm font-bold text-outline">
+                    Asiento para {passengerName(passenger.firstName, passenger.lastName) || `Pasajero ${index + 1}`}
+                  </legend>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {selectedFlight.availableSeats.map((seat) => {
+                      const chosenByOther = selectedSeatIds.some(
+                        (chosen, chosenIndex) => chosen === seat.id && chosenIndex !== index,
+                      );
+                      const isChosen = selectedSeatIds[index] === seat.id;
+                      return (
+                        <button
+                          aria-label={`Asiento ${seat.label}${seat.label === passenger.seatNumber ? ', asiento actual' : ''}`}
+                          aria-pressed={isChosen}
+                          className={
+                            isChosen
+                              ? 'h-9 min-w-11 rounded-md border border-primary-container bg-primary-container px-2 font-label-sm text-label-sm font-bold text-on-primary'
+                              : 'h-9 min-w-11 rounded-md border border-outline-variant bg-surface-container-lowest px-2 font-label-sm text-label-sm font-bold text-primary-container disabled:cursor-not-allowed disabled:opacity-40'
+                          }
+                          disabled={chosenByOther}
+                          key={seat.id}
+                          onClick={() => onSeatChange(index, seat.id)}
+                          type="button"
+                        >
+                          {seat.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </fieldset>
               ))}
             </div>
-          );
-        })()}
+          </div>
+        )}
 
         <p className="mt-3 font-body-sm text-body-sm text-on-surface-variant">
           El valor ya abonado se conserva. Al confirmar se reemplaza el tramo y se reemite el pasaje actualizado.
         </p>
-        {error && <p className="mt-3 rounded-lg border border-secondary/30 bg-error-container px-4 py-3 font-body-sm text-body-sm text-on-error-container" role="alert">{error}</p>}
+
+        {error && (
+          <div className="mt-3 flex items-start gap-2 rounded-lg border border-secondary/30 bg-error-container px-4 py-3 text-on-error-container" role="alert">
+            <span aria-hidden="true" className="material-symbols-outlined text-base">error</span>
+            <p className="font-body-sm text-body-sm">{error}</p>
+          </div>
+        )}
+
         <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button className="h-11 rounded-lg border border-outline-variant px-5 font-label-lg text-label-lg font-bold text-outline" disabled={loading} onClick={onCancel} type="button">Cancelar</button>
           <button className="h-11 rounded-lg bg-secondary px-5 font-label-lg text-label-lg font-bold text-on-secondary disabled:cursor-not-allowed disabled:opacity-50" disabled={loading || !selected || (preservedSeat && selectedSeatIds.filter(Boolean).length !== passengerCount)} onClick={onConfirm} type="button">
-            {loading ? 'Confirmando…' : 'Confirmar cambio de vuelo'}
+            {loading ? 'Confirmando…' : 'Confirmar Cambio de Vuelo'}
           </button>
         </div>
       </section>
