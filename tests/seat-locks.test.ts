@@ -50,7 +50,8 @@ test('RF-03: el flujo web exige un pasajero con datos por cada asiento', () => {
     contactEmail: 'pasajero@example.com',
     seatIds: [validSeat1, validSeat2],
   };
-  const passenger = { firstName: 'Ana', lastName: 'Gómez', documentNumber: '39112804' };
+  // Cambio US-16: el flujo web exige tambien la fecha de nacimiento.
+  const passenger = { firstName: 'Ana', lastName: 'Gómez', documentNumber: '39112804', birthDate: '1995-11-22' };
 
   assert.equal(webLockSeatsSchema.safeParse(base).success, false);
   assert.equal(
@@ -61,6 +62,11 @@ test('RF-03: el flujo web exige un pasajero con datos por cada asiento', () => {
     webLockSeatsSchema.safeParse({ ...base, passengers: [passenger, { ...passenger, documentNumber: '30111222' }] })
       .success,
     true,
+  );
+  assert.equal(
+    webLockSeatsSchema.safeParse({ ...base, passengers: [passenger, { ...passenger, documentNumber: '30111222', birthDate: '' }] })
+      .success,
+    false,
   );
 });
 

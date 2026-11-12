@@ -6,6 +6,7 @@ import { payOwnedMobileBooking } from '@/lib/mobile/payment';
 import { withSerializationRetry } from '@/lib/mobile/retry';
 import { settlePayment } from '@/lib/payment-service';
 import { prisma } from '@/lib/prisma';
+import { rememberBookingPassengers } from '@/lib/saved-passengers/service';
 import { releaseExpiredSeatLocks } from '@/lib/seat-locks';
 import { mobilePaymentSchema } from '@/lib/validation';
 
@@ -40,6 +41,12 @@ export const POST = handler(async (req: Request) => {
     const response = mobileErrorResponse(err);
     if (response) return response;
     throw err;
+  }
+
+  // Cambio US-16: con el pago aprobado, los pasajeros de la compra van a la agenda de la
+  // cuenta. Corre despues de confirmar la compra y nunca la rompe.
+  if (!result.reused && result.payment.status === 'APPROVED') {
+    await rememberBookingPassengers(result.booking);
   }
 
   if (!result.reused) {

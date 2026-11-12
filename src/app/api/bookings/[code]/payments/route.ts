@@ -6,6 +6,7 @@ import { settlePayment } from "@/lib/payment-service";
 import { prisma } from "@/lib/prisma";
 import { paymentSchema } from "@/lib/validation";
 import { releaseExpiredSeatLocks } from "@/lib/seat-locks";
+import { rememberBookingPassengers } from "@/lib/saved-passengers/service";
 export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ code: string }> };
 
@@ -31,6 +32,10 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
   const result = await prisma.$transaction(async (tx) => {
     return settlePayment(tx, code, user, body);
   }, { timeout: 60000, maxWait: 15000 });
+  // Cambio US-16: con el pago aprobado, los pasajeros de la compra van a la agenda de la
+  // cuenta. Corre despues de confirmar la compra y nunca la rompe.
+  if (!result.reused && result.payment.status === "APPROVED")
+    await rememberBookingPassengers(result.booking);
   if (!result.reused)
     await audit({
       userId: user.id,

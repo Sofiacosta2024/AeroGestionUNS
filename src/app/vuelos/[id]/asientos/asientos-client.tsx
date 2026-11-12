@@ -7,13 +7,20 @@ import type { CabinClass } from '@prisma/client';
 import type { FlightSeatView } from '@/lib/seat-locks';
 import { seatSelectionUnitFee } from '@/lib/seat-pricing';
 import {
+  DOCUMENT_TYPE_LABEL,
   emptyPassenger,
   hasPassengerErrors,
   normalizePassenger,
+  PASSENGER_DOCUMENT_TYPES,
+  sanitizeDocumentInput,
   validatePassengers,
+  type PassengerDocumentType,
   type PassengerFormData,
   type PassengerFormErrors,
 } from '@/lib/passenger-form';
+import { toDateInput } from '@/lib/format';
+import { MAX_SAVED_PASSENGERS } from '@/lib/saved-passengers/agenda';
+import type { SavedPassengerView } from '@/lib/saved-passengers/service';
 
 const AVATAR =
   'https://lh3.googleusercontent.com/aida/AEtjO1WEhfaUl0efpt8MGhPU4BBSstKaHhbeJkOote0mUJ6_jYF6PAiF6FJ3oV7QSAdXoJj44L0BuwK0AMb8x9jtVQ3_fy7ZsUgPcH9cyj-MAcA7WCfUbepbSac9uc1dl-esKJHlvyljleDzT7OiNIG0e0zFh0Xe8ICzkK0eg0ZK6ZNHsIYEAclfRhCoKbMbUSqDQdarW6j9TqCWU1zKs56C4wu8KN0_Goo_-hECEtlTYqVYoNRpNtJjTTxrdHc';
@@ -65,7 +72,27 @@ type AsientosClientProps = {
   initialSeats: FlightSeatView[];
   initialPassengersCount: number;
   currentUser: CurrentUserInfo;
+  /** US-16: agenda de la cuenta con sesion (vacia sin sesion). */
+  savedPassengers: SavedPassengerView[];
 };
+
+/** Orden en que se enfoca el primer campo con error. */
+const PASSENGER_FIELDS = ['firstName', 'lastName', 'documentType', 'documentNumber', 'birthDate'] as const;
+
+const isFormDocumentType = (type: string): type is PassengerDocumentType =>
+  (PASSENGER_DOCUMENT_TYPES as readonly string[]).includes(type);
+
+/** Pasajero guardado -> datos del formulario (US-16). */
+function fromSaved(saved: SavedPassengerView): PassengerFormData {
+  const documentType = isFormDocumentType(saved.documentType) ? saved.documentType : 'DNI';
+  return {
+    firstName: saved.firstName,
+    lastName: saved.lastName,
+    documentType,
+    documentNumber: sanitizeDocumentInput(documentType, saved.documentNumber),
+    birthDate: saved.birthDate ?? '',
+  };
+}
 
 /** El adicional depende de la tarifa, sin diferencias por fila o columna. */
 export function getSeatAdditionalPrice(
@@ -84,6 +111,7 @@ export default function AsientosClient({
   initialSeats,
   initialPassengersCount,
   currentUser,
+  savedPassengers,
 }: AsientosClientProps) {
   const router = useRouter();
 
@@ -118,6 +146,11 @@ export default function AsientosClient({
   const [passengerErrors, setPassengerErrors] = useState<PassengerFormErrors[]>(() =>
     Array.from({ length: initialPassengersCount }, () => ({})),
   );
+  // US-16: pasajero guardado elegido en el desplegable de cada tarjeta ('' = ninguno).
+  const [selectedSaved, setSelectedSaved] = useState<string[]>(() =>
+    Array.from({ length: initialPassengersCount }, () => ''),
+  );
+  const todayArt = useMemo(() => toDateInput(new Date()), []);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -282,14 +315,37 @@ export default function AsientosClient({
     }
   };
 
+  // Cambio US-16: el documento puede ser DNI o Pasaporte; al cambiar el tipo se re-limpia el numero.
   const updatePassenger = (index: number, field: keyof PassengerFormData, value: string) => {
-    const nextValue = field === 'documentNumber' ? value.replace(/\D/g, '').slice(0, 9) : value;
     setPassengersData((prev) =>
-      prev.map((passenger, i) => (i === index ? { ...passenger, [field]: nextValue } : passenger)),
+      prev.map((passenger, i) => {
+        if (i !== index) return passenger;
+        if (field === 'documentType') {
+          const documentType = isFormDocumentType(value) ? value : 'DNI';
+          return { ...passenger, documentType, documentNumber: sanitizeDocumentInput(documentType, passenger.documentNumber) };
+        }
+        if (field === 'documentNumber') {
+          return { ...passenger, documentNumber: sanitizeDocumentInput(passenger.documentType, value) };
+        }
+        return { ...passenger, [field]: value };
+      }),
     );
     setPassengerErrors((prev) =>
-      prev.map((errors, i) => (i === index ? { ...errors, [field]: undefined } : errors)),
+      prev.map((errors, i) =>
+        i === index
+          ? { ...errors, [field]: undefined, ...(field === 'documentType' ? { documentNumber: undefined } : {}) }
+          : errors,
+      ),
     );
+    setErrorMessage(null);
+  };
+
+  /** US-16: «Cargar Datos» completa la tarjeta con el pasajero guardado elegido. */
+  const loadSavedPassenger = (index: number) => {
+    const saved = savedPassengers.find((p) => p.id === selectedSaved[index]);
+    if (!saved) return;
+    setPassengersData((prev) => prev.map((passenger, i) => (i === index ? fromSaved(saved) : passenger)));
+    setPassengerErrors((prev) => prev.map((errors, i) => (i === index ? {} : errors)));
     setErrorMessage(null);
   };
 
@@ -310,15 +366,13 @@ export default function AsientosClient({
       return;
     }
 
-    const errors = validatePassengers(passengersData);
+    const errors = validatePassengers(passengersData, todayArt);
     setPassengerErrors(errors);
     if (hasPassengerErrors(errors)) {
       setErrorMessage('Completá los datos de todos los pasajeros antes de continuar.');
       const firstIndex = errors.findIndex((passengerErrors) => Object.keys(passengerErrors).length > 0);
       const firstField = firstIndex >= 0
-        ? (['firstName', 'lastName', 'documentNumber'] as const).find(
-            (field) => errors[firstIndex]?.[field],
-          )
+        ? PASSENGER_FIELDS.find((field) => errors[firstIndex]?.[field])
         : undefined;
       if (firstIndex >= 0 && firstField) {
         document.getElementById(`passenger-${firstIndex}-${firstField}`)?.focus();
@@ -333,8 +387,9 @@ export default function AsientosClient({
         return {
           firstName: passenger.firstName,
           lastName: passenger.lastName,
-          documentType: 'DNI' as const,
+          documentType: passenger.documentType,
           documentNumber: passenger.documentNumber,
+          birthDate: passenger.birthDate,
         };
       });
 
@@ -1011,7 +1066,7 @@ export default function AsientosClient({
                   ASIGNACIÓN POR PASAJERO
                 </h3>
                 <p className="text-[11px] text-gray-500 font-medium mt-1">
-                  Completá nombre, apellido y DNI tal como figuran en el documento de cada pasajero.
+                  Completá nombre, apellido, documento y fecha de nacimiento tal como figuran en el documento de cada pasajero.
                 </p>
               </div>
 
@@ -1074,6 +1129,52 @@ export default function AsientosClient({
                         </div>
                       </div>
 
+                      {/* US-16 (WF-16): agenda de pasajeros guardados, solo con sesion iniciada. */}
+                      {currentUser && (
+                        <div className="space-y-1">
+                          <label
+                            htmlFor={`passenger-${i}-saved`}
+                            className="text-[10px] font-bold uppercase tracking-wider text-gray-500"
+                          >
+                            Seleccionar pasajero guardado ({savedPassengers.length}/{MAX_SAVED_PASSENGERS})
+                          </label>
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <select
+                              id={`passenger-${i}-saved`}
+                              value={selectedSaved[i] ?? ''}
+                              disabled={savedPassengers.length === 0}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setSelectedSaved((prev) => prev.map((id, j) => (j === i ? value : id)));
+                              }}
+                              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-[#170040] outline-none transition-colors focus:border-[#E11D48] focus:ring-2 focus:ring-rose-100 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
+                            >
+                              <option value="">
+                                {savedPassengers.length === 0 ? 'Todavía no tenés pasajeros guardados' : 'Seleccionar…'}
+                              </option>
+                              {savedPassengers.map((saved) => (
+                                <option key={saved.id} value={saved.id}>
+                                  {saved.firstName} {saved.lastName}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => loadSavedPassenger(i)}
+                              disabled={!selectedSaved[i]}
+                              className="shrink-0 rounded-lg bg-indigo-100 px-4 py-2 text-xs font-extrabold text-[#170040] transition-colors hover:bg-indigo-200 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              Cargar Datos
+                            </button>
+                          </div>
+                          {savedPassengers.length === 0 && (
+                            <span className="block text-[10px] font-medium text-gray-500">
+                              Los pasajeros se guardan solos cuando completás una compra.
+                            </span>
+                          )}
+                        </div>
+                      )}
+
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <label className="block">
                           <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
@@ -1135,16 +1236,32 @@ export default function AsientosClient({
                           )}
                         </label>
 
-                        <label className="block sm:col-span-2">
+                        {/* Cambio US-16: DNI o Pasaporte, y fecha de nacimiento obligatoria. */}
+                        <label className="block">
                           <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
-                            DNI
+                            DNI / Pasaporte
                           </span>
+                          <div className="mt-1 flex gap-1.5">
+                            <select
+                              id={`passenger-${i}-documentType`}
+                              aria-label={`Tipo de documento del pasajero ${i + 1}`}
+                              value={passenger.documentType}
+                              onChange={(e) => updatePassenger(i, 'documentType', e.target.value)}
+                              className="shrink-0 rounded-lg border border-gray-200 bg-white px-2 py-2 text-xs font-semibold text-[#170040] outline-none transition-colors focus:border-[#E11D48] focus:ring-2 focus:ring-rose-100"
+                            >
+                              {PASSENGER_DOCUMENT_TYPES.map((type) => (
+                                <option key={type} value={type}>
+                                  {DOCUMENT_TYPE_LABEL[type]}
+                                </option>
+                              ))}
+                            </select>
                           <input
                             id={`passenger-${i}-documentNumber`}
+                            aria-label={`Número de documento del pasajero ${i + 1}`}
                             type="text"
-                            inputMode="numeric"
+                            inputMode={passenger.documentType === 'DNI' ? 'numeric' : 'text'}
                             autoComplete="off"
-                            maxLength={9}
+                            maxLength={passenger.documentType === 'DNI' ? 9 : 15}
                             value={passenger.documentNumber}
                             onChange={(e) => updatePassenger(i, 'documentNumber', e.target.value)}
                             aria-invalid={!!fieldErrors.documentNumber}
@@ -1153,17 +1270,46 @@ export default function AsientosClient({
                                 ? `passenger-${i}-documentNumber-error`
                                 : undefined
                             }
-                            className={`mt-1 w-full rounded-lg border bg-white px-3 py-2 text-xs font-semibold text-[#170040] outline-none transition-colors focus:border-[#E11D48] focus:ring-2 focus:ring-rose-100 ${
+                            className={`min-w-0 flex-1 rounded-lg border bg-white px-3 py-2 text-xs font-semibold text-[#170040] outline-none transition-colors focus:border-[#E11D48] focus:ring-2 focus:ring-rose-100 ${
                               fieldErrors.documentNumber ? 'border-red-400' : 'border-gray-200'
                             }`}
                             placeholder="Número de documento"
                           />
+                          </div>
                           {fieldErrors.documentNumber && (
                             <span
                               id={`passenger-${i}-documentNumber-error`}
                               className="mt-1 block text-[10px] font-semibold text-red-600"
                             >
                               {fieldErrors.documentNumber}
+                            </span>
+                          )}
+                        </label>
+
+                        <label className="block">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                            Fecha de nacimiento
+                          </span>
+                          <input
+                            id={`passenger-${i}-birthDate`}
+                            type="date"
+                            autoComplete="bday"
+                            min="1900-01-01"
+                            max={todayArt}
+                            value={passenger.birthDate}
+                            onChange={(e) => updatePassenger(i, 'birthDate', e.target.value)}
+                            aria-invalid={!!fieldErrors.birthDate}
+                            aria-describedby={fieldErrors.birthDate ? `passenger-${i}-birthDate-error` : undefined}
+                            className={`mt-1 w-full rounded-lg border bg-white px-3 py-2 text-xs font-semibold text-[#170040] outline-none transition-colors focus:border-[#E11D48] focus:ring-2 focus:ring-rose-100 ${
+                              fieldErrors.birthDate ? 'border-red-400' : 'border-gray-200'
+                            }`}
+                          />
+                          {fieldErrors.birthDate && (
+                            <span
+                              id={`passenger-${i}-birthDate-error`}
+                              className="mt-1 block text-[10px] font-semibold text-red-600"
+                            >
+                              {fieldErrors.birthDate}
                             </span>
                           )}
                         </label>

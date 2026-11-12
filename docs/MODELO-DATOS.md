@@ -48,6 +48,7 @@ FlightSchedule (RF-01) ──► Route, Aircraft, User (creador)
 | `users` | `id` | Email, hash bcrypt, rol, legajo, nombre, teléfono, activo. |
 | `sessions` | `id` | `user_id`, **`token_hash` (SHA-256 del token)**, expiración, IP, user agent. |
 | `passengers` | `id` | Perfil de pasajero: documento, fecha de nacimiento, contacto, `user_id` opcional. |
+| `saved_passengers` | `id` | **US-16.** Agenda de pasajeros guardados de una cuenta (`user_id`, borrado en cascada): nombre, apellido, tipo y número de documento (`DNI`/`PASAPORTE`), nacimiento y `last_used_at`. Único por `(user_id, document_type, document_number)`. Se completa sola al aprobarse un pago. Hasta 20 por cuenta: el nuevo número 21 reemplaza al de `last_used_at` más viejo. |
 | `bookings` | `id` | `booking_code` público único, `user_id` opcional, tipo de viaje, estado, cantidad de pasajeros, cabina, total, contacto. |
 | `booking_flights` | `id` | Tramo de la reserva: vuelo, tarifa, precio congelado, `is_return`, salida. |
 | `booking_passengers` | `id` | Pasajero dentro de una reserva: nombre, tipo/número de documento, nacimiento, asiento, código y estado de check-in. |

@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
+import { listSavedPassengers } from '@/lib/saved-passengers/service';
 import { getFlightSeatsStatus } from '@/lib/seat-locks';
 import { seatSelectionUnitFee } from '@/lib/seat-pricing';
 import AsientosClient from './asientos-client';
@@ -37,7 +38,17 @@ export default async function AsientosPage({
 
   if (!flight) notFound();
 
-  const initialSeatsData = await getFlightSeatsStatus(id, fareId);
+  // Cambio US-16: agenda de pasajeros guardados para el desplegable (solo con sesion). Es una
+  // ayuda: si falla, el checkout sigue andando con el desplegable vacio.
+  const [initialSeatsData, savedPassengers] = await Promise.all([
+    getFlightSeatsStatus(id, fareId),
+    user
+      ? listSavedPassengers(user.id).catch((err) => {
+          console.error('[us-16] no se pudo leer la agenda de pasajeros guardados:', err);
+          return [];
+        })
+      : Promise.resolve([]),
+  ]);
 
   const selectedFare = fareId
     ? flight.fares.find((f) => f.fareId === fareId) ?? flight.fares[0]
@@ -108,6 +119,7 @@ export default async function AsientosPage({
         }))}
         initialSeats={initialSeatsData.seats}
         initialPassengersCount={parsedPassengers}
+        savedPassengers={savedPassengers}
         currentUser={
           user
             ? {

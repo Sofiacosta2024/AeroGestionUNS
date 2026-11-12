@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { normalizePassenger, PASSENGER_DOCUMENT_TYPES, validatePassenger } from './passenger-form';
 
 const trimmed = (max: number) => z.string().trim().max(max);
 const required = (max: number) => trimmed(max).min(1, 'Este campo es obligatorio');
@@ -452,10 +453,33 @@ export const lockSeatsSchema = z.object({
 });
 
 /**
+ * Pasajero del checkout web y de la agenda de pasajeros guardados (US-16): las mismas
+ * reglas que el formulario (`validatePassenger`), con DNI o Pasaporte y fecha de
+ * nacimiento obligatoria. Sale normalizado (documento sin puntos, nombres sin espacios
+ * de mas) y la fecha como yyyy-mm-dd.
+ */
+export const webPassengerSchema = z
+  .object({
+    firstName: z.string().max(80),
+    lastName: z.string().max(80),
+    documentType: z.enum(PASSENGER_DOCUMENT_TYPES, { message: 'Elegí DNI o Pasaporte' }).default('DNI'),
+    documentNumber: z.string().max(32),
+    birthDate: z.string().max(10),
+  })
+  .superRefine((passenger, ctx) => {
+    for (const [campo, mensaje] of Object.entries(validatePassenger(passenger))) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [campo], message: mensaje });
+    }
+  })
+  .transform(normalizePassenger);
+
+/**
  * Variante del flujo web: exige un pasajero con datos nominales por cada asiento.
  * Se mantiene separada de `lockSeatsSchema` para no alterar el contrato de US-10A.
+ * Cambio US-16: cada pasajero se valida con `webPassengerSchema` (DNI o Pasaporte y
+ * fecha de nacimiento obligatoria); la app movil sigue con `lockSeatsSchema`.
  */
-export const webLockSeatsSchema = lockSeatsSchema.refine(
+export const webLockSeatsSchema = lockSeatsSchema.extend({ passengers: z.array(webPassengerSchema).optional() }).refine(
   (d) => !!d.passengers && d.passengers.length === d.seatIds.length,
   {
     message: 'Debe enviar los datos de todos los pasajeros seleccionados',

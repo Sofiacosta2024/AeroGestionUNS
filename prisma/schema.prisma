@@ -165,6 +165,7 @@ model User {
   auditLogs  AuditLog[]
   flightSchedules FlightSchedule[]
   counterSales CounterSale[]
+  savedPassengers SavedPassenger[]
 
   @@index([role])
   @@index([isActive])
@@ -483,6 +484,30 @@ model Passenger {
   @@unique([documentType, documentNumber])
   @@index([lastName, firstName])
   @@map("passengers")
+}
+
+/// Agenda de pasajeros guardados de una cuenta (US-16): se completa sola al pagar una
+/// compra y alimenta el desplegable del checkout. Hasta 20 por cuenta; el pasajero nuevo
+/// numero 21 reemplaza al de `lastUsedAt` mas viejo.
+model SavedPassenger {
+  id             String       @id @default(cuid())
+  userId         String       @map("user_id")
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName      String       @map("first_name") @db.VarChar(80)
+  lastName       String       @map("last_name") @db.VarChar(80)
+  documentType   DocumentType @default(DNI) @map("document_type")
+  documentNumber String       @map("document_number") @db.VarChar(32)
+  /// Null solo si se guardo desde un canal que no la pide (ej. app movil).
+  birthDate      DateTime?    @map("birth_date") @db.Date
+  /// Ultima compra con este pasajero: define el orden y a quien se reemplaza.
+  lastUsedAt     DateTime     @map("last_used_at") @db.Timestamptz(3)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  /// Un mismo documento figura una sola vez en la agenda de cada cuenta.
+  @@unique([userId, documentType, documentNumber])
+  @@index([userId, lastUsedAt])
+  @@map("saved_passengers")
 }
 
 model Booking {

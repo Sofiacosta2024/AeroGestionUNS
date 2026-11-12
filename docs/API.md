@@ -363,6 +363,52 @@ en `audit_logs` (`action = RESCHEDULE`) el itinerario anterior y el nuevo, los p
 afectados y las clases cuya capacidad se ajustó. La respuesta trae lo mismo. El aviso por
 mail a los pasajeros es de RF-06.
 
+## Pasajeros guardados (US-16)
+
+Agenda de hasta 20 acompañantes por cuenta, para completar el checkout sin volver a
+escribir los datos. En `/vuelos/:id/asientos`, con sesión iniciada, cada pasajero tiene el
+desplegable «Seleccionar pasajero guardado (N/20)» y el botón «Cargar Datos».
+
+| Método | Ruta | Rol | Descripción |
+| --- | --- | --- | --- |
+| `GET` | `/api/v1/pasajeros/guardados` | con sesión | La agenda de la cuenta, del uso más reciente al más viejo. |
+| `POST` | `/api/v1/pasajeros/guardados` | con sesión | Alta manual de un pasajero. |
+
+`GET` responde `{ data, count, max }`. Cada pasajero trae `firstName`, `lastName`,
+`documentType` (`DNI`/`PASAPORTE`), `documentNumber`, `birthDate` (`YYYY-MM-DD` o `null`)
+y `lastUsedAt`.
+
+`POST` recibe un pasajero con las mismas reglas que el checkout:
+
+```json
+{ "firstName": "Lucía Belén", "lastName": "Gómez", "documentType": "DNI", "documentNumber": "39112804", "birthDate": "1995-11-22" }
+```
+
+Reglas:
+
+- **Guardado automático:** al aprobarse el pago de una compra (web o app móvil), todos sus
+  pasajeros van a la agenda de la cuenta dueña de la reserva, incluido el titular si viaja.
+  Corre después de confirmar la compra: si falla, la compra sigue confirmada. Las ventas de
+  mostrador no se guardan.
+- Un documento (tipo + número) figura una sola vez por cuenta. Si el pasajero ya está, se
+  actualizan sus datos con los de la última compra y su `lastUsedAt`.
+- Con 20 guardados, un pasajero nuevo reemplaza al de `lastUsedAt` más viejo (nunca a uno
+  de la misma compra).
+- Una compra desde un canal que no pide la fecha de nacimiento no borra la ya guardada.
+- Las escrituras bloquean la cuenta: dos compras simultáneas no pasan el tope.
+
+Errores:
+
+- `POST` con un documento que ya está en la agenda: `409` con «El DNI/Pasaporte ingresado ya
+  corresponde a Lucía Belén Gómez en tu lista de pasajeros guardados.».
+- Datos inválidos (nombre, documento, fecha vacía o futura): `422` con el detalle por campo.
+- Sin sesión: `401`.
+
+*Cambio US-16 en el checkout:* `POST /api/flights/:id/lock-seats` (flujo web) exige en cada
+pasajero `documentType` (`DNI` o `PASAPORTE`, por defecto `DNI`) y `birthDate`
+(`YYYY-MM-DD`, obligatoria y no futura). DNI de 6 a 9 dígitos; pasaporte de 6 a 15 letras o
+números. La app móvil (`lockSeatsSchema`) no cambia.
+
 ## Pasajeros y reservas
 
 | Método | Ruta | Rol | Descripción |
