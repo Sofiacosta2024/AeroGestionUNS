@@ -24,7 +24,6 @@ function Logo() {
  * avisan que estan en construccion.
  */
 const PENDING_SECTIONS: { path: string; label: string; short: string }[] = [
-  { path: 'mis-reservas', label: 'Mis Reservas', short: 'Reservas' },
   { path: 'check-in-online', label: 'Check-in Online', short: 'Check-in' },
   { path: 'alta-de-vuelos-admin', label: 'Alta de Vuelos [Admin]', short: 'Admin' },
 ];
@@ -152,6 +151,14 @@ export default function SiteHeader({ user, activePath, onNotice }: SiteHeaderPro
             >
               Consultar Reserva
             </a>
+            <a
+              aria-current={activePath === 'mis-reservas' ? 'page' : undefined}
+              className={desktopLinkCls(activePath === 'mis-reservas')}
+              data-path="mis-reservas"
+              href="/mis-reservas"
+            >
+              Mis Reservas
+            </a>
             {(user?.role === 'Mostrador Operativo' || user?.role === 'Administrador') && <a href="/mostrador" className={desktopLinkCls(false)}>Mostrador</a>}
             {pendingSections
               .filter((s) => {
@@ -254,6 +261,13 @@ export default function SiteHeader({ user, activePath, onNotice }: SiteHeaderPro
               href="/reserva"
             >
               Consultar
+            </a>
+            <a
+              aria-current={activePath === 'mis-reservas' ? 'page' : undefined}
+              className={mobileLinkCls(activePath === 'mis-reservas')}
+              href="/mis-reservas"
+            >
+              Reservas
             </a>
             {(user?.role === 'Mostrador Operativo' || user?.role === 'Administrador') && <a href="/mostrador" className={mobileLinkCls(false)}>Mostrador</a>}
             {pendingSections

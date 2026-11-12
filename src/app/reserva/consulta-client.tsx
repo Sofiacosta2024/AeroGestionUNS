@@ -71,8 +71,8 @@ function Logo() {
   );
 }
 
-export default function ConsultaClient() {
-  const [code, setCode] = useState('');
+export default function ConsultaClient({ initialCode = '' }: { initialCode?: string } = {}) {
+  const [code, setCode] = useState(initialCode.toUpperCase());
   const [lastName, setLastName] = useState('');
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});

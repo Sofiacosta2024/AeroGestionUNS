@@ -1,4 +1,4 @@
-export type SiteHeaderPath = 'vuelos' | 'reserva';
+export type SiteHeaderPath = 'vuelos' | 'reserva' | 'mis-reservas';
 
 /**
  * Destino del enlace "Buscar vuelos" de la barra de navegacion (SiteHeader).
