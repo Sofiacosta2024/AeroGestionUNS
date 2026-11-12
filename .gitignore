@@ -18,7 +18,10 @@ prisma/generated/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.test
+.env.test.*
 !.env.example
+!.env.test.example
 
 # logs
 npm-debug.log*

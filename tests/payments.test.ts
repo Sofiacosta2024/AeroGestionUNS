@@ -142,10 +142,11 @@ test('rechaza CVV no numerico, titular vacio, mail invalido y vencimiento pasado
       false,
     );
 });
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import type { AuthUser } from '../src/lib/auth';
 import { settlePayment } from '../src/lib/payment-service';
 import { ApiError } from '../src/lib/api';
+import { withSerializationRetry } from '../src/lib/mobile/retry';
 const owner: AuthUser = {
   id: 'owner',
   email: 'owner@example.com',
@@ -272,4 +273,33 @@ test('impide pagos de reservas ajenas, canceladas o con pasajeros incompletos', 
     );
     assert.equal(f.writes.length, 0);
   }
+});
+test('US-10A: un reintento P2034 del pago no duplica el cobro', async () => {
+  const f = transactionFixture();
+  let attempts = 0;
+
+  const result = await withSerializationRetry(
+    async () => {
+      attempts++;
+      if (attempts === 1) {
+        throw new Prisma.PrismaClientKnownRequestError(
+          'Transaction failed due to a write conflict or a deadlock. Please retry your transaction',
+          { code: 'P2034', clientVersion: '6.19.3' },
+        );
+      }
+      return settlePayment(f.tx, 'AG-TEST01', owner, paymentSchema.parse(valid));
+    },
+    { baseDelayMs: 0, jitterMs: 0 },
+  );
+
+  assert.equal(attempts, 2);
+  assert.equal(result.reused, false);
+  assert.equal(f.writes.length, 1);
+
+  const again = await withSerializationRetry(
+    () => settlePayment(f.tx, 'AG-TEST01', owner, paymentSchema.parse(valid)),
+    { baseDelayMs: 0, jitterMs: 0 },
+  );
+  assert.equal(again.reused, true);
+  assert.equal(f.writes.length, 1);
 });

@@ -214,9 +214,18 @@ export type LockSeatsInput = {
  * 4. Si cualquier asiento está tomado por otro usuario, aborta con 409 "Asiento no disponible".
  * 5. Si están libres, fija el timer de 5 minutos (expiresAt) y descuenta cupo.
  */
+export type LockSeatsOptions = {
+  /**
+   * Las rutas moviles necesitan distinguir un fallo de serializacion de un
+   * conflicto real de disponibilidad. El default preserva web/mostrador.
+   */
+  rethrowSerialization?: boolean;
+};
+
 export async function lockSeatsAtomic(
   input: LockSeatsInput,
   txClient?: Prisma.TransactionClient,
+  options: LockSeatsOptions = {},
 ) {
   const { flightId, fareId, seatIds, contactEmail, contactPhone, userId, passengers = [] } = input;
 
@@ -384,11 +393,18 @@ export async function lockSeatsAtomic(
     } catch (error) {
       // El llamador debe repetir la transacción completa tras un conflicto de serialización.
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') throw error;
-      // Capturar colisión concurrente (Unique constraint failed o conflicto de serialización)
+      // P2002 siempre es una colisión real de asientos.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw ApiError.conflict('Asiento no disponible');
+      }
+      // Algunos drivers devuelven serializacion/deadlock como Error generico.
+      // Mobile lo reenvia para mapearlo a 503; web/mostrador conserva el 409.
       if (
-        (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2002')) ||
-        (error instanceof Error && (error.message.includes('could not serialize access') || error.message.includes('deadlock')))
+        error instanceof Error &&
+        (error.message.includes('could not serialize access') ||
+          error.message.toLowerCase().includes('deadlock'))
       ) {
+        if (options.rethrowSerialization) throw error;
         throw ApiError.conflict('Asiento no disponible');
       }
       throw error;

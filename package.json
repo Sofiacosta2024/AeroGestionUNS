@@ -23,7 +23,17 @@
     "db:reset": "prisma migrate reset --force",
     "worker:receipts": "tsx workers/receipt-email.ts",
     "test:unit": "tsx --tsconfig tests/tsconfig.json --test tests/unit/*.test.ts tests/unit/*.test.tsx",
-    "test:db:receipts": "node scripts/test-us08-us13.mjs"
+    "test:db:receipts": "node scripts/test-us08-us13.mjs",
+    "db:test:up": "docker compose --env-file .env.test -f compose.test.yml up -d --wait",
+    "db:test:down": "docker compose --env-file .env.test -f compose.test.yml down",
+    "db:test:reset": "docker compose --env-file .env.test -f compose.test.yml down -v",
+    "db:test:status": "docker compose --env-file .env.test -f compose.test.yml ps",
+    "db:test:check": "tsx scripts/test-db-local.ts check",
+    "db:test:prepare": "tsx scripts/test-db-local.ts prepare",
+    "db:test:run": "tsx scripts/test-db-local.ts run",
+    "test:integration:us10a:safety": "tsx --tsconfig tests/tsconfig.json --test tests/integration/us10a/safety.test.ts",
+    "test:integration:us10a:smoke": "tsx scripts/test-db-local.ts run tests/integration/us10a/db-smoke.test.ts",
+    "test:integration:us10a": "npm run test:integration:us10a:safety && npm run test:integration:us10a:smoke"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.9.10",

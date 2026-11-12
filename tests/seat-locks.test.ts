@@ -71,6 +71,7 @@ function createMockSeatLockTx(overrides: {
   aircraftSeatsClass?: CabinClass;
   fareClass?: CabinClass;
   uniqueConstraintError?: boolean;
+  serializationError?: 'P2034' | 'generic';
   seatSelectionFee?: number;
 } = {}) {
   const {
@@ -80,6 +81,7 @@ function createMockSeatLockTx(overrides: {
     aircraftSeatsClass = CabinClass.ECONOMY,
     fareClass = CabinClass.ECONOMY,
     uniqueConstraintError = false,
+    serializationError,
     seatSelectionFee = 0,
   } = overrides;
 
@@ -99,6 +101,15 @@ function createMockSeatLockTx(overrides: {
       deleteMany: async () => ({ count: 0 }),
       findMany: async () => existingLocks,
       createMany: async ({ data }: { data: Array<Record<string, unknown>> }) => {
+        if (serializationError === 'P2034') {
+          throw new Prisma.PrismaClientKnownRequestError(
+            'Transaction failed due to a write conflict or a deadlock. Please retry your transaction',
+            { code: 'P2034', clientVersion: '6.19.3' },
+          );
+        }
+        if (serializationError === 'generic') {
+          throw new Error('could not serialize access due to concurrent update');
+        }
         if (uniqueConstraintError) {
           const err = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
             code: 'P2002',
@@ -370,4 +381,71 @@ test('RF-03: pago vencido rechaza sin cobrar ni mutar una transacción que se re
   assert.equal(bookingStatus, BookingStatus.PENDING);
   assert.equal(deletedLocks, false);
   assert.equal(restoredSeats, 0);
+});
+
+test('US-10A: por defecto una serializacion generica sigue siendo 409 para web/mostrador', async () => {
+  const { tx } = createMockSeatLockTx({ serializationError: 'generic' });
+
+  await assert.rejects(
+    () =>
+      lockSeatsAtomic(
+        {
+          flightId: validCuid,
+          fareId: validCuid,
+          seatIds: [validSeat1],
+          contactEmail: 'web@example.com',
+        },
+        tx,
+      ),
+    (err: unknown) => {
+      assert.ok(err instanceof ApiError);
+      assert.equal(err.status, 409);
+      assert.equal(err.message, 'Asiento no disponible');
+      return true;
+    },
+  );
+});
+
+test('US-10A: rethrowSerialization deja pasar la serializacion generica para que mobile responda 503', async () => {
+  const { tx } = createMockSeatLockTx({ serializationError: 'generic' });
+
+  await assert.rejects(
+    () =>
+      lockSeatsAtomic(
+        {
+          flightId: validCuid,
+          fareId: validCuid,
+          seatIds: [validSeat1],
+          contactEmail: 'mobile@example.com',
+        },
+        tx,
+        { rethrowSerialization: true },
+      ),
+    (err: unknown) => {
+      assert.equal(err instanceof ApiError, false);
+      assert.ok(err instanceof Error);
+      assert.ok(err.message.includes('could not serialize access'));
+      return true;
+    },
+  );
+});
+
+test('US-10A: P2034 se reenvia siempre para que el llamador decida el reintento', async () => {
+  const { tx } = createMockSeatLockTx({ serializationError: 'P2034' });
+
+  await assert.rejects(
+    () =>
+      lockSeatsAtomic(
+        {
+          flightId: validCuid,
+          fareId: validCuid,
+          seatIds: [validSeat1],
+          contactEmail: 'mobile@example.com',
+        },
+        tx,
+        { rethrowSerialization: true },
+      ),
+    (err: unknown) =>
+      err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034',
+  );
 });

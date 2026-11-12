@@ -1,7 +1,9 @@
 import { handler, ok } from '@/lib/api';
 import { audit } from '@/lib/audit';
 import { requireUser } from '@/lib/auth';
-import { parseMobileBody } from '@/lib/mobile/http';
+import { mobileErrorResponse, parseMobileBody } from '@/lib/mobile/http';
+import { payOwnedMobileBooking } from '@/lib/mobile/payment';
+import { withSerializationRetry } from '@/lib/mobile/retry';
 import { settlePayment } from '@/lib/payment-service';
 import { prisma } from '@/lib/prisma';
 import { releaseExpiredSeatLocks } from '@/lib/seat-locks';
@@ -20,12 +22,25 @@ export const POST = handler(async (req: Request) => {
   const user = await requireUser();
   const body = await parseMobileBody(req, mobilePaymentSchema);
 
-  await releaseExpiredSeatLocks(undefined, body.bookingCode);
-
-  const result = await prisma.$transaction(
-    (tx) => settlePayment(tx, body.bookingCode, user, body),
-    { timeout: 60000, maxWait: 15000 },
-  );
+  let result;
+  try {
+    result = await withSerializationRetry(() =>
+      payOwnedMobileBooking(user, body, {
+        db: prisma,
+        releaseExpiredSeatLocks: (bookingCode) =>
+          releaseExpiredSeatLocks(undefined, bookingCode),
+        settlePayment: (bookingCode, currentUser, input) =>
+          prisma.$transaction(
+            (tx) => settlePayment(tx, bookingCode, currentUser, input),
+            { timeout: 60000, maxWait: 15000 },
+          ),
+      }),
+    );
+  } catch (err) {
+    const response = mobileErrorResponse(err);
+    if (response) return response;
+    throw err;
+  }
 
   if (!result.reused) {
     await audit({

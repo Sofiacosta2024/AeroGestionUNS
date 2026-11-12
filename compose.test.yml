@@ -1,0 +1,30 @@
+name: aerogestion-us10a-test
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aerogestion-us10a-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-aerogestion_us10a_test}
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-aerogestion_us10a_test}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:?Definir POSTGRES_TEST_PASSWORD en .env.test}
+    ports:
+      - "127.0.0.1:${POSTGRES_TEST_PORT:-55432}:5432"
+    volumes:
+      - aerogestion-us10a-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - aerogestion-us10a-test
+
+volumes:
+  aerogestion-us10a-pgdata:
+    name: aerogestion-us10a-pgdata
+
+networks:
+  aerogestion-us10a-test:
+    name: aerogestion-us10a-test

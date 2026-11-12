@@ -1,25 +1,12 @@
-import { Prisma } from '@prisma/client';
 import { created, handler } from '@/lib/api';
 import { audit } from '@/lib/audit';
 import { requireUser } from '@/lib/auth';
-import { isSeatUnavailable, parseMobileBody, seatUnavailableResponse } from '@/lib/mobile/http';
-import { lockSeatsAtomic, type LockSeatsInput } from '@/lib/seat-locks';
+import { mobileErrorResponse, parseMobileBody } from '@/lib/mobile/http';
+import { withSerializationRetry } from '@/lib/mobile/retry';
+import { lockSeatsAtomic } from '@/lib/seat-locks';
 import { mobileReservationSchema } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
-
-/** Reintenta una vez si PostgreSQL aborta la transaccion serializable (P2034). */
-async function lockSeatsWithRetry(input: LockSeatsInput) {
-  for (let attempt = 1; ; attempt++) {
-    try {
-      return await lockSeatsAtomic(input);
-    } catch (err) {
-      const canRetry =
-        err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034';
-      if (!canRetry || attempt >= 2) throw err;
-    }
-  }
-}
 
 /**
  * POST /api/v1/mobile/reservas
@@ -34,19 +21,26 @@ export const POST = handler(async (req: Request) => {
 
   let result;
   try {
-    result = await lockSeatsWithRetry({
-      flightId: body.flightId,
-      fareId: body.fareId,
-      quotedTotal: body.quotedTotal,
-      seatMode: body.seatMode,
-      seatIds: body.seatIds,
-      contactEmail: user.email,
-      contactPhone: body.contactPhone ?? null,
-      userId: user.id,
-      passengers: body.passengers,
-    });
+    result = await withSerializationRetry(() =>
+      lockSeatsAtomic(
+        {
+          flightId: body.flightId,
+          fareId: body.fareId,
+          quotedTotal: body.quotedTotal,
+          seatMode: body.seatMode,
+          seatIds: body.seatIds,
+          contactEmail: user.email,
+          contactPhone: body.contactPhone ?? null,
+          userId: user.id,
+          passengers: body.passengers,
+        },
+        undefined,
+        { rethrowSerialization: true },
+      ),
+    );
   } catch (err) {
-    if (isSeatUnavailable(err)) return seatUnavailableResponse();
+    const response = mobileErrorResponse(err);
+    if (response) return response;
     throw err;
   }
 

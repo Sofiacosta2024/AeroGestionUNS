@@ -679,7 +679,11 @@ export const mobileReservationSchema = lockSeatsSchema
       message: 'Debe enviar los datos de todos los pasajeros seleccionados',
       path: ['passengers'],
     },
-  );
+  )
+  .refine((d) => !(d.seatMode === 'AUTO' && d.seatIds.length > 0), {
+    message: 'La asignación automática no admite asientos elegidos',
+    path: ['seatIds'],
+  });
 
 export type MobileReservationInput = z.output<typeof mobileReservationSchema>;
 
