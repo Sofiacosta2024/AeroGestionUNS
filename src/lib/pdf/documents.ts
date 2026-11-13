@@ -183,6 +183,7 @@ function drawInvoice(
     y + 12,
   );
   y += 24;
+  if (invoice.contactEmail) y = drawField(doc, 'Email de contacto', invoice.contactEmail, y);
 
   doc.setDrawColor(...MUTED);
   doc.setLineWidth(0.2);

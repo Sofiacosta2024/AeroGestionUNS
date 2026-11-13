@@ -44,6 +44,7 @@ test('dos PDFs válidos y payload idéntico entre reintentos incluso para nueve 
   const first = buildReceiptAttachments(snapshot);
   assert.deepEqual(first.map(a => a.filename), ['Pasaje_ABC234.pdf', 'Factura_ABC234.pdf']);
   for (const a of first) assert.ok(Buffer.from(a.content, 'base64').subarray(0, 5).toString().startsWith('%PDF-'));
+  assert.ok(Buffer.from(first[1]!.content, 'base64').includes(snapshot.recipient));
   assert.deepEqual(first, buildReceiptAttachments(snapshot));
 });
 test('proveedor recibe dos adjuntos, destinatario y clave estable sin enviar email real', async () => {

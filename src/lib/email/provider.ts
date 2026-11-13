@@ -1,6 +1,8 @@
 import { buildReceiptAttachments } from './receipt-attachments';
 import { renderReceiptEmail } from './receipt-template';
 import { renderItineraryChangeEmail } from './itinerary-template';
+import { renderBookingCancellationEmail, renderFlightCancellationEmail } from './cancellation-template';
+import type { BookingCancellationSnapshot, CancellationSnapshot } from './cancellation-snapshot';
 import type { ItinerarySnapshot } from './itinerary-snapshot';
 import type { ReceiptSnapshot } from './types';
 import { receiptSender } from './config';
@@ -20,6 +22,14 @@ export async function sendReceiptEmail(snapshot: ReceiptSnapshot, idempotencyKey
 /** Aviso de reprogramacion (US-06A, WF-06A): sin adjuntos. */
 export async function sendItineraryEmail(snapshot: ItinerarySnapshot, idempotencyKey: string, options: SendOptions = {}) {
   return sendEmail({ to: snapshot.recipient, ...renderItineraryChangeEmail(snapshot) }, idempotencyKey, options);
+}
+
+export async function sendCancellationEmail(snapshot: CancellationSnapshot, idempotencyKey: string, options: SendOptions = {}) {
+  return sendEmail({ to: snapshot.recipient, ...renderFlightCancellationEmail(snapshot) }, idempotencyKey, options);
+}
+
+export async function sendBookingCancellationEmail(snapshot: BookingCancellationSnapshot, idempotencyKey: string, options: SendOptions = {}) {
+  return sendEmail({ to: snapshot.recipient, ...renderBookingCancellationEmail(snapshot) }, idempotencyKey, options);
 }
 
 /**

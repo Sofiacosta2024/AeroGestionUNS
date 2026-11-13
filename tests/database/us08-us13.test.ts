@@ -49,6 +49,21 @@ test('venta atómica, idempotencia, PDFs/outbox únicos e importe original inmut
   const snapshot = receiptSnapshotSchema.parse(booking.emailDispatches[0]!.snapshot);
   await db.booking.update({ where: { id: booking.id }, data: { totalAmount: 999, contactEmail: 'changed@example.com' } });
   assert.equal(snapshot.recipient, 'buyer@example.com'); assert.equal(snapshot.documents.invoice.total, 100);
+  assert.equal(snapshot.documents.invoice.contactEmail, snapshot.recipient);
+});
+
+test('Mostrador simula el rechazo antes de reservar y cobra crédito y débito con tarjeta válida', async () => {
+  for (const paymentMethod of ['CREDIT_CARD', 'DEBIT_CARD'] as const) {
+    const { input } = await flight();
+    const card = { cardNumber: '1111111111111111', cardholder: 'Lucía Gómez', expiry: '12/99', cvv: '123' };
+    await assert.rejects(createCounterSale({ ...input, paymentMethod, card }, operator), /Pago rechazado/);
+    assert.equal(await db.bookingFlight.count({ where: { flightId: input.flightId } }), 0);
+    const sale = await createCounterSale({ ...input, paymentMethod, card: { ...card, cardNumber: '4242424242424242' } }, operator);
+    assert.equal((await db.payment.findUniqueOrThrow({ where: { id: sale.paymentId } })).method, paymentMethod);
+    const dispatch = await db.emailDispatch.findUniqueOrThrow({ where: { id: sale.email.dispatchId } });
+    assert.equal(dispatch.recipient, input.contactEmail);
+    assert.doesNotMatch(JSON.stringify(dispatch.snapshot), /4242424242424242/);
+  }
 });
 test('última plaza en web y mostrador simultáneos tiene exactamente un ganador', async () => {
   const { input, aircraft } = await flight(1);

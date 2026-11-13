@@ -4,6 +4,7 @@ import { FlightResults, type CounterFlight, type Offer } from '@/components/most
 import { PassengerFields, type CounterPassenger } from '@/components/mostrador/passenger-fields';
 import { SeatPicker, type CounterSeat } from '@/components/mostrador/seat-picker';
 import { SaleConfirmation } from '@/components/mostrador/sale-confirmation';
+import { CounterCardFields, emptyCounterCard } from '@/components/mostrador/card-fields';
 import { counterSaleSchema, counterFieldErrors, type CounterFieldErrors } from '@/lib/mostrador/validation';
 import type { CounterQuote, CounterSaleInput, CounterSaleResult } from '@/lib/mostrador/types';
 import { formatExactArs as formatArs, toDateInput } from '@/lib/format';
@@ -28,6 +29,7 @@ export default function CounterSaleClient() {
   const [contactEmail, setEmail] = useState('');
   const [contactPhone, setPhone] = useState('');
   const [paymentMethod, setMethod] = useState<CounterSaleInput['paymentMethod']>('CASH');
+  const [card, setCard] = useState(emptyCounterCard);
   const [quote, setQuote] = useState<CounterQuote | null>(null);
   const [refreshQuote, setRefreshQuote] = useState(0);
   const [searching, setSearching] = useState(false);
@@ -99,7 +101,7 @@ export default function CounterSaleClient() {
     setError(''); setFieldErrors({});
     const parsed = counterSaleSchema.safeParse(attempt.current ?? {
       requestId: crypto.randomUUID(), flightId: selected.flight.id, fareId: selected.offer.id, quotedTotal: quote.totalAmount,
-      seatMode, passengers, contactEmail, contactPhone, paymentMethod,
+      seatMode, passengers, contactEmail, contactPhone, paymentMethod, card: paymentMethod === 'CASH' ? undefined : card,
     });
     if (!parsed.success) {
       const errors = counterFieldErrors(parsed.error.issues);
@@ -123,17 +125,21 @@ export default function CounterSaleClient() {
             !!item && typeof item === 'object' && typeof item.campo === 'string' && typeof item.mensaje === 'string')
             .map(item => ({ path: item.campo.split('.'), message: item.mensaje }))) : {};
         if (Object.keys(errors).length) showFieldErrors(errors);
+        else if (result.error?.code === 'PAYMENT_REJECTED') {
+          setCard(previous => ({ ...previous, cardNumber: '', cvv: '' }));
+          showFieldErrors({ 'card.cardNumber': result.error.message });
+        }
         else setError(result.error?.message ?? 'No se pudo emitir la venta');
         setRefreshQuote(v => v + 1); return;
       }
-      setSale(result.data); setUncertain(false); attempt.current = null;
+      setSale(result.data); setUncertain(false); attempt.current = null; setCard(emptyCounterCard);
     } catch {
       setUncertain(true); setError('No pudimos confirmar la respuesta. Reintentá la misma venta: no se duplicará el cobro.');
     } finally { sending.current = false; setBusy(false); }
   }
   function newSale() {
     setSale(null); setSelected(null); setQuote(null); setPassengers([emptyPassenger()]); setCount(1);
-    setEmail(''); setPhone(''); setError(''); setFieldErrors({}); setMethod('CASH'); setSeatMode('AUTO'); void search();
+    setEmail(''); setPhone(''); setError(''); setFieldErrors({}); setMethod('CASH'); setCard(emptyCounterCard); setSeatMode('AUTO'); void search();
   }
   return <main className="counter-main"><h1>Venta presencial de pasajes</h1>
     {sale ? <SaleConfirmation sale={sale} onNewSale={newSale} /> : <>
@@ -158,7 +164,7 @@ export default function CounterSaleClient() {
               passengers.forEach((p, j) => { if (p.documentNumber === previousDocument) clearFieldError(`passengers.${j}.documentNumber`); });
             setPassengers(old => old.map((p, j) => j === i ? { ...p, [field]: value } : p));
           }} />
-          <div className="counter-fields"><div className="counter-field"><label htmlFor="counter-email">Email</label>
+          <div className="counter-fields"><div className="counter-field"><label htmlFor="counter-email">Email de la reserva</label>
             <input id="counter-email" required type="email" autoComplete="email" maxLength={160} disabled={locked} value={contactEmail}
               aria-invalid={fieldErrors.contactEmail ? true : undefined} aria-describedby={fieldErrors.contactEmail ? 'counter-email-error' : undefined}
               onChange={e => { setEmail(e.target.value); clearFieldError('contactEmail'); }} />
@@ -176,8 +182,19 @@ export default function CounterSaleClient() {
             errors={passengers.map((_, i) => fieldErrors[`passengers.${i}.seatId`])}
             onSeat={id => { clearFieldError(`passengers.${activePassenger}.seatId`); setPassengers(old => old.map((p, i) => i === activePassenger ? { ...p, seatId: id } : p)); }} />}
         </section><section className="counter-panel"><h2>Método de pago</h2><fieldset disabled={locked}><legend>Confirmar cobro presencial</legend><div className="counter-methods">
-          {(['CASH', 'CREDIT_CARD', 'DEBIT_CARD'] as const).map(method => <label key={method} data-selected={paymentMethod === method}><input type="radio" name="counter-method" value={method} checked={paymentMethod === method} onChange={() => setMethod(method)} />{({ CASH: 'Efectivo', CREDIT_CARD: 'Tarjeta de crédito', DEBIT_CARD: 'Tarjeta de débito' })[method]}</label>)}
-        </div></fieldset><p className="counter-muted">Emití la venta una vez confirmado el cobro en caja o en la terminal presencial.</p>
+          {(['CASH', 'CREDIT_CARD', 'DEBIT_CARD'] as const).map(method => <label key={method} data-selected={paymentMethod === method}><input type="radio" name="counter-method" value={method} checked={paymentMethod === method} onChange={() => {
+            setMethod(method);
+            setCard(emptyCounterCard);
+            setFieldErrors(errors => Object.fromEntries(Object.entries(errors).filter(([key]) => !key.startsWith('card.'))));
+          }} />{({ CASH: 'Efectivo', CREDIT_CARD: 'Tarjeta de crédito', DEBIT_CARD: 'Tarjeta de débito' })[method]}</label>)}
+        </div>
+          {paymentMethod === 'CASH'
+            ? <p className="counter-muted">Emití la venta una vez confirmado el cobro en caja.</p>
+            : <CounterCardFields card={card} errors={fieldErrors} onChange={(field, value) => {
+                setCard(previous => ({ ...previous, [field]: value }));
+                clearFieldError(`card.${field}`);
+              }} />}
+        </fieldset>
           <div className="counter-total" aria-live="polite">{selected ? <><p>{selected.flight.code} · {selected.offer.name} · {count} {count === 1 ? 'pasajero' : 'pasajeros'}</p>
             {quote ? <><p>Tarifa {formatArs(quote.baseAmount)} + elección de asiento {formatArs(quote.seatSelectionAmount)}</p><strong>Total: {formatArs(quote.totalAmount)} {quote.currency}</strong></> : <p>{quoteError || 'Cotizando…'}</p>}</> : 'Seleccioná un vuelo y una clase.'}</div>
           {error && <p className="counter-error" role="alert">{error}</p>}

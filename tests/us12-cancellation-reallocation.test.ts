@@ -221,6 +221,7 @@ test('US-12A y US-12B v2.0: Ciclo de vida completo de cancelación lógica y rea
   });
 
   let booking3Id: string | null = null;
+  let bookingWithoutAlternativeId: string | null = null;
 
   try {
     // -------------------------------------------------------------
@@ -236,7 +237,16 @@ test('US-12A y US-12B v2.0: Ciclo de vida completo de cancelación lógica y rea
     // -------------------------------------------------------------
     // TEST 2: US-12A - Cancelación Lógica del Vuelo y Retiro Comercial
     // -------------------------------------------------------------
-    const cancelRes = await cancelarVuelo(flightA.id, 'Clima', adminId);
+    const cancellations = await Promise.allSettled([
+      cancelarVuelo(flightA.id, 'Clima', adminId),
+      cancelarVuelo(flightA.id, 'Clima', adminId),
+    ]);
+    const succeeded = cancellations.filter((result) => result.status === 'fulfilled');
+    const rejected = cancellations.filter((result) => result.status === 'rejected');
+    assert.equal(succeeded.length, 1);
+    assert.equal(rejected.length, 1);
+    assert.equal(rejected[0]!.reason.status, 400);
+    const cancelRes = succeeded[0]!.value;
     assert.equal(cancelRes.flightId, flightA.id);
     assert.equal(cancelRes.reason, 'Clima');
     assert.equal(cancelRes.affectedPassengersCount, 3);
@@ -246,11 +256,30 @@ test('US-12A y US-12B v2.0: Ciclo de vida completo de cancelación lógica y rea
     assert.equal(updatedFlightA.status, FlightStatus.CANCELLED);
     assert.ok(updatedFlightA.notes?.includes('Clima'));
 
-    // Intentar cancelar nuevamente debe fallar
-    await assert.rejects(
-      async () => cancelarVuelo(flightA.id, 'Operativo', adminId),
-      (err: any) => err.status === 400 || err.status === 409,
-    );
+    const notices = await prisma.emailDispatch.findMany({
+      where: { bookingId: { in: [booking1.id, booking2.id] } },
+      orderBy: { recipient: 'asc' },
+    });
+    assert.equal(notices.length, 2);
+    for (const [index, booking] of [booking1, booking2].entries()) {
+      const notice = notices[index]!;
+      assert.equal(notice.kind, 'FLIGHT_CANCELLED');
+      assert.equal(notice.dedupeKey, `cancel-${flightA.id}-${booking.id}`);
+      assert.equal(notice.recipient, booking.contactEmail);
+      assert.equal(notice.paymentId, null);
+      assert.equal(notice.status, 'PENDIENTE');
+      assert.deepEqual(notice.snapshot, {
+        version: 1,
+        recipient: booking.contactEmail,
+        greetingName: index === 0 ? 'Mariano' : 'Esteban',
+        displayCode: booking.bookingCode,
+        bookingUrl: `${(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/+$/, '')}/reserva`,
+        reason: 'Clima',
+        status: 'REASIGNACION_PROPUESTA',
+        cancelled: { flightCode: flightA.code, departureAt: departureA.toISOString(), arrivalAt: arrivalA.toISOString() },
+        proposed: { flightCode: flightB.code, departureAt: departureB.toISOString(), arrivalAt: arrivalB.toISOString() },
+      });
+    }
 
     // -------------------------------------------------------------
     // TEST 3: US-12B v2.0 - Métricas y Propuestas Automáticas (WF-12B)
@@ -376,6 +405,12 @@ test('US-12A y US-12B v2.0: Ciclo de vida completo de cancelación lógica y rea
     });
     assert.equal(b2Confirmed.status, BookingStatus.REPROGRAMADA);
     assert.equal(b2Confirmed.flights[0]?.flightId, flightB.id);
+    for (const booking of [booking1, booking2]) {
+      const notice = await prisma.emailDispatch.findFirstOrThrow({
+        where: { bookingId: booking.id, kind: 'ITINERARY_CHANGE' },
+      });
+      assert.equal(notice.recipient, booking.contactEmail);
+    }
 
     // -------------------------------------------------------------
     // TEST 9: US-12B v2.0 - Cancelación por Contingencia y Reembolso (WF-12B-C)
@@ -423,6 +458,11 @@ test('US-12A y US-12B v2.0: Ciclo de vida completo de cancelación lógica y rea
     assert.equal(b3Cancelled.status, BookingStatus.CANCELLED);
     assert.equal(b3Cancelled.reembolsoPendiente, true);
     assert.ok(b3Cancelled.notes?.includes('Contingencia – rechaza alternativas'));
+    const bookingCancellation = await prisma.emailDispatch.findUniqueOrThrow({
+      where: { dedupeKey: `booking-cancelled-${booking3.id}` },
+    });
+    assert.equal(bookingCancellation.kind, 'BOOKING_CANCELLED');
+    assert.equal(bookingCancellation.recipient, booking3.contactEmail);
 
     // -------------------------------------------------------------
     // TEST 10: Wrappers de compatibilidad
@@ -430,9 +470,40 @@ test('US-12A y US-12B v2.0: Ciclo de vida completo de cancelación lógica y rea
     const compatData = await getPasajerosAfectados(flightA.id);
     assert.equal(compatData.flight.id, flightA.id);
     assert.ok(Array.isArray(compatData.passengers));
+
+    // US-06B: el motor no encuentra cupo para esta reserva del vuelo C.
+    const bookingWithoutAlternative = await prisma.booking.create({
+      data: {
+        bookingCode: `T4${timestamp.toString().slice(-4)}`,
+        status: BookingStatus.PAID,
+        contactEmail: 'pasajero4.test@uns.edu.ar',
+        flights: { create: { flightId: flightC.id, fareId: fareC0.fareId, price: fareC0.price, departureAt: departureC } },
+        passengers: {
+          create: { firstName: 'Elena', lastName: 'Pérez', documentNumber: '39112806', documentType: 'DNI' },
+        },
+      },
+    });
+    bookingWithoutAlternativeId = bookingWithoutAlternative.id;
+    await prisma.flightFare.updateMany({ where: { flightId: flightB.id }, data: { availableSeats: 0 } });
+    await cancelarVuelo({ flightId: flightC.id, reason: 'Mantenimiento', userId: adminId, origin: 'https://aerogestion.example' });
+    const fallback = await prisma.emailDispatch.findUniqueOrThrow({
+      where: { dedupeKey: `cancel-${flightC.id}-${bookingWithoutAlternative.id}` },
+    });
+    assert.deepEqual(fallback.snapshot, {
+      version: 1,
+      recipient: bookingWithoutAlternative.contactEmail,
+      greetingName: 'Elena',
+      displayCode: bookingWithoutAlternative.bookingCode,
+      bookingUrl: `${(process.env.NEXT_PUBLIC_APP_URL || 'https://aerogestion.example').replace(/\/+$/, '')}/reserva`,
+      reason: 'Mantenimiento',
+      status: 'SIN_ALTERNATIVA',
+      cancelled: { flightCode: flightC.code, departureAt: departureC.toISOString(), arrivalAt: arrivalC.toISOString() },
+      proposed: null,
+    });
   } finally {
     // Cleanup: eliminar datos creados en el test
-    const bookingIds = [booking1.id, booking2.id, booking3Id].filter(Boolean) as string[];
+    const bookingIds = [booking1.id, booking2.id, booking3Id, bookingWithoutAlternativeId].filter(Boolean) as string[];
+    await prisma.emailDispatch.deleteMany({ where: { bookingId: { in: bookingIds } } });
     await prisma.bookingPassenger.deleteMany({ where: { bookingId: { in: bookingIds } } });
     await prisma.bookingFlight.deleteMany({ where: { bookingId: { in: bookingIds } } });
     await prisma.booking.deleteMany({ where: { id: { in: bookingIds } } });

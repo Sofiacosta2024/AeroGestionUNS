@@ -1,11 +1,15 @@
-import { BookingStatus, CabinClass, FlightStatus } from '@prisma/client';
+import { BookingStatus, CabinClass, FlightStatus, type Flight, type Prisma } from '@prisma/client';
 import { ApiError } from './api';
 import { audit } from './audit';
+import { cancellationReasonSchema, type CancellationSnapshot } from './email/cancellation-snapshot';
+import { enqueueCancellationNotices } from './scheduling/cancellation-notices';
+import { notifyBookingCancelled } from './scheduling/booking-cancellation-notices';
+import { notifyBookingRescheduled } from './scheduling/itinerary-notices';
 import { formatTime, toDateInput } from './format';
 import { prisma } from './prisma';
 
-export type MotivoCancelacion = 'Clima' | 'Mantenimiento' | 'Operativo';
-export const MOTIVOS_CANCELACION: MotivoCancelacion[] = ['Clima', 'Mantenimiento', 'Operativo'];
+export type MotivoCancelacion = CancellationSnapshot['reason'];
+export const MOTIVOS_CANCELACION = cancellationReasonSchema.options;
 
 export type CancelacionInfo = {
   flight: {
@@ -121,6 +125,8 @@ export async function getCancelacionInfo(flightId: string): Promise<CancelacionI
           BookingStatus.CONFIRMED,
           BookingStatus.PENDING,
           BookingStatus.REPROGRAMACION_PENDIENTE,
+          BookingStatus.REPROGRAMADA,
+          BookingStatus.REASIGNADO,
           BookingStatus.REASIGNACION_PROPUESTA,
           BookingStatus.SIN_ALTERNATIVA,
         ],
@@ -182,89 +188,63 @@ export async function getCancelacionInfo(flightId: string): Promise<CancelacionI
  * automáticamente ejecuta el motor de reasignación US-12B v2.0.
  */
 export async function cancelarVuelo(
-  flightIdOrParams: string | { flightId: string; reason: MotivoCancelacion; userId?: string },
+  flightIdOrParams: string | { flightId: string; reason: MotivoCancelacion; userId?: string; origin?: string },
   reasonArg?: MotivoCancelacion,
   userIdArg?: string,
 ) {
-  const flightId = typeof flightIdOrParams === 'string' ? flightIdOrParams : flightIdOrParams.flightId;
-  const reason = typeof flightIdOrParams === 'string' ? reasonArg! : flightIdOrParams.reason;
-  const userId = typeof flightIdOrParams === 'string' ? userIdArg : flightIdOrParams.userId;
+  const { flightId, reason, userId, origin = 'http://localhost:3000' } = typeof flightIdOrParams === 'string'
+    ? { flightId: flightIdOrParams, reason: reasonArg!, userId: userIdArg }
+    : flightIdOrParams;
 
-  const flight = await prisma.flight.findUnique({
-    where: { id: flightId },
-    include: {
-      route: true,
-      fares: { include: { fare: true } },
-    },
-  });
-
-  if (!flight) {
-    throw ApiError.notFound('Vuelo no encontrado');
-  }
-
-  if (flight.status === FlightStatus.CANCELLED) {
-    throw ApiError.badRequest('El vuelo ya se encuentra cancelado');
-  }
-
-  const activeBookings = await prisma.booking.findMany({
-    where: {
-      flights: { some: { flightId } },
-      status: {
-        in: [
-          BookingStatus.PAID,
-          BookingStatus.CONFIRMED,
-          BookingStatus.PENDING,
-          BookingStatus.REPROGRAMACION_PENDIENTE,
-        ],
-      },
-    },
-    include: {
-      passengers: true,
-      flights: {
-        where: { flightId },
-        include: { fare: true },
-      },
-    },
-  });
-
-  let economy = 0;
-  let economyPremium = 0;
-  let primeraClase = 0;
-  let totalPassengers = 0;
-
-  for (const b of activeBookings) {
-    const flightLeg = b.flights[0];
-    const fareClass = normalizeClassName(flightLeg?.fare?.name, b.cabinClass);
-    const count = b.passengers.length || b.passengersCount || 1;
-    totalPassengers += count;
-
-    if (fareClass === 'Economy Premium') {
-      economyPremium += count;
-    } else if (fareClass === 'Primera Clase') {
-      primeraClase += count;
-    } else {
-      economy += count;
-    }
-  }
-
-  const cancelNote = `Cancelado por motivo: ${reason}`;
-
-  // 1. Cancelar vuelo y pasar reservas a REPROGRAMACION_PENDIENTE
-  await prisma.$transaction(
+  const result = await prisma.$transaction(
     async (tx) => {
-      await tx.flight.update({
-        where: { id: flightId },
-        data: {
-          status: FlightStatus.CANCELLED,
-          notes: cancelNote,
+      await tx.$queryRaw`SELECT id FROM flights WHERE id = ${flightId} FOR NO KEY UPDATE`;
+      const flight = await tx.flight.findUnique({ where: { id: flightId } });
+      if (!flight) throw ApiError.notFound('Vuelo no encontrado');
+      if (flight.status === FlightStatus.CANCELLED) {
+        throw ApiError.badRequest('El vuelo ya se encuentra cancelado');
+      }
+
+      const activeBookings = await tx.booking.findMany({
+        where: {
+          flights: { some: { flightId } },
+          status: {
+            in: [
+              BookingStatus.PAID,
+              BookingStatus.CONFIRMED,
+              BookingStatus.PENDING,
+              BookingStatus.REPROGRAMACION_PENDIENTE,
+              BookingStatus.REPROGRAMADA,
+              BookingStatus.REASIGNADO,
+            ],
+          },
         },
+        include: {
+          _count: { select: { passengers: true } },
+          flights: { where: { flightId }, include: { fare: true } },
+        },
+      });
+
+      const breakdown = { economy: 0, economyPremium: 0, primeraClase: 0 };
+      let affectedPassengersCount = 0;
+      for (const booking of activeBookings) {
+        const fare = booking.flights[0]?.fare;
+        const fareClass = normalizeClassName(fare?.name, booking.cabinClass);
+        const count = booking._count.passengers || booking.passengersCount || 1;
+        affectedPassengersCount += count;
+        if (fareClass === 'Economy Premium') breakdown.economyPremium += count;
+        else if (fareClass === 'Primera Clase') breakdown.primeraClase += count;
+        else breakdown.economy += count;
+      }
+
+      const cancelled = await tx.flight.update({
+        where: { id: flightId },
+        data: { status: FlightStatus.CANCELLED, notes: `Cancelado por motivo: ${reason}` },
       });
 
       if (activeBookings.length > 0) {
         await tx.booking.updateMany({
-          where: {
-            id: { in: activeBookings.map((b) => b.id) },
-          },
+          where: { id: { in: activeBookings.map((booking) => booking.id) } },
           data: {
             status: BookingStatus.REPROGRAMACION_PENDIENTE,
             vueloOriginalId: flightId,
@@ -274,34 +254,29 @@ export async function cancelarVuelo(
         });
       }
 
-      await audit({
-        userId,
-        action: 'FLIGHT_CANCELLED',
-        entity: 'Flight',
-        entityId: flightId,
-        metadata: {
-          flightCode: flight.code,
-          reason,
-          affectedBookingsCount: activeBookings.length,
-          affectedPassengersCount: totalPassengers,
-          breakdown: { economy, economyPremium, primeraClase },
-        },
-      });
+      const plans = await generarPropuestasEnTransaccion(tx, cancelled);
+      const notifications = await enqueueCancellationNotices(tx, cancelled, reason, plans.map((plan) => plan.bookingId), origin);
+      return {
+        flightId,
+        flightCode: flight.code,
+        reason,
+        affectedBookingsCount: activeBookings.length,
+        affectedPassengersCount,
+        breakdown,
+        notifications,
+      };
     },
     { maxWait: 15000, timeout: 30000 },
   );
 
-  // 2. Ejecutar inmediatamente el Motor de Reasignación Determinístico (US-12B)
-  await generarPropuestas(flightId);
-
-  return {
-    flightId,
-    flightCode: flight.code,
-    reason,
-    affectedBookingsCount: activeBookings.length,
-    affectedPassengersCount: totalPassengers,
-    breakdown: { economy, economyPremium, primeraClase },
-  };
+  await audit({
+    userId,
+    action: 'FLIGHT_CANCELLED',
+    entity: 'Flight',
+    entityId: flightId,
+    metadata: result,
+  });
+  return result;
 }
 
 /**
@@ -313,21 +288,29 @@ export async function cancelarVuelo(
  * - Retención física de cupos y asignación automática del primer asiento libre (fila y letra).
  */
 export async function generarPropuestas(flightId: string, options?: { onlySinAlternativa?: boolean }) {
-  const flight = await prisma.flight.findUnique({
-    where: { id: flightId },
-    include: { route: true, aircraft: true },
-  });
+  return prisma.$transaction(
+    async (tx) => {
+      await tx.$queryRaw`SELECT id FROM flights WHERE id = ${flightId} FOR NO KEY UPDATE`;
+      const flight = await tx.flight.findUnique({ where: { id: flightId } });
+      if (!flight) throw ApiError.notFound('Vuelo cancelado no encontrado');
+      return generarPropuestasEnTransaccion(tx, flight, options);
+    },
+    { maxWait: 15000, timeout: 30000 },
+  );
+}
 
-  if (!flight) {
-    throw ApiError.notFound('Vuelo cancelado no encontrado');
-  }
-
+async function generarPropuestasEnTransaccion(
+  tx: Prisma.TransactionClient,
+  flight: Flight,
+  options?: { onlySinAlternativa?: boolean },
+) {
+  const flightId = flight.id;
   // 1. Obtener candidatos de la misma ruta en la ventana permitida
   const cancellationTime = flight.updatedAt || new Date();
   const minDeparture = new Date(Math.min(cancellationTime.getTime(), flight.departureAt.getTime()) + 2 * 3600 * 1000);
   const maxDeparture = new Date(flight.departureAt.getTime() + 72 * 3600 * 1000);
 
-  const rawCandidates = await prisma.flight.findMany({
+  const rawCandidates = await tx.flight.findMany({
     where: {
       routeId: flight.routeId,
       id: { not: flightId },
@@ -359,7 +342,7 @@ export async function generarPropuestas(flightId: string, options?: { onlySinAlt
 
   // Consultar asientos ya ocupados en cada candidato
   const candidateIds = rawCandidates.map((c) => c.id);
-  const occupiedPassengers = await prisma.bookingPassenger.findMany({
+  const occupiedPassengers = await tx.bookingPassenger.findMany({
     where: {
       seatId: { not: null },
       booking: {
@@ -412,7 +395,7 @@ export async function generarPropuestas(flightId: string, options?: { onlySinAlt
     ? [BookingStatus.SIN_ALTERNATIVA]
     : [BookingStatus.REPROGRAMACION_PENDIENTE, BookingStatus.SIN_ALTERNATIVA];
 
-  const reservas = await prisma.booking.findMany({
+  const reservas = await tx.booking.findMany({
     where: {
       OR: [
         { vueloOriginalId: flightId },
@@ -541,50 +524,45 @@ export async function generarPropuestas(flightId: string, options?: { onlySinAlt
     });
   }
 
-  // 4. Guardar todos los cambios en una única transacción atómica
-  await prisma.$transaction(
-    async (tx) => {
-      for (const plan of plans) {
-        await tx.booking.update({
-          where: { id: plan.bookingId },
-          data: {
-            status: plan.status,
-            vueloOriginalId: flightId,
-            vueloPropuestoId: plan.vueloPropuestoId,
-            propuestaMotivo: plan.propuestaMotivo,
-            respuestaPasajero: 'PENDIENTE',
+  // 4. Guardar todas las propuestas en la transacción activa.
+  for (const plan of plans) {
+    await tx.booking.update({
+      where: { id: plan.bookingId },
+      data: {
+        status: plan.status,
+        vueloOriginalId: flightId,
+        vueloPropuestoId: plan.vueloPropuestoId,
+        propuestaMotivo: plan.propuestaMotivo,
+        respuestaPasajero: 'PENDIENTE',
+      },
+    });
+
+    // Asignar asientos
+    for (const sa of plan.seatAssignments) {
+      await tx.bookingPassenger.update({
+        where: { id: sa.passengerId },
+        data: { seatId: sa.seatId },
+      });
+    }
+
+    // Descontar cupo en flight_fares
+    for (const ded of plan.deductions) {
+      const fareRow = await tx.flightFare.findFirst({
+        where: {
+          flightId: ded.flightId,
+          fare: {
+            name: { contains: ded.cabinClass === 'Primera Clase' ? 'Primera' : ded.cabinClass === 'Economy Premium' ? 'Premium' : 'Economy', mode: 'insensitive' },
           },
+        },
+      });
+      if (fareRow) {
+        await tx.flightFare.update({
+          where: { id: fareRow.id },
+          data: { availableSeats: { decrement: ded.count } },
         });
-
-        // Asignar asientos
-        for (const sa of plan.seatAssignments) {
-          await tx.bookingPassenger.update({
-            where: { id: sa.passengerId },
-            data: { seatId: sa.seatId },
-          });
-        }
-
-        // Descontar cupo en flight_fares
-        for (const ded of plan.deductions) {
-          const fareRow = await tx.flightFare.findFirst({
-            where: {
-              flightId: ded.flightId,
-              fare: {
-                name: { contains: ded.cabinClass === 'Primera Clase' ? 'Primera' : ded.cabinClass === 'Economy Premium' ? 'Premium' : 'Economy', mode: 'insensitive' },
-              },
-            },
-          });
-          if (fareRow) {
-            await tx.flightFare.update({
-              where: { id: fareRow.id },
-              data: { availableSeats: { decrement: ded.count } },
-            });
-          }
-        }
       }
-    },
-    { maxWait: 15000, timeout: 30000 },
-  );
+    }
+  }
 
   return plans;
 }
@@ -741,8 +719,9 @@ export async function getReservasAfectadas(flightId: string) {
 export async function confirmarReasignacion(params: {
   bookingIds: string[];
   userId?: string;
+  origin?: string;
 }) {
-  const { bookingIds, userId } = params;
+  const { bookingIds, userId, origin = 'http://localhost:3000' } = params;
 
   if (!bookingIds || bookingIds.length === 0) {
     throw ApiError.badRequest('No se especificaron reservas a confirmar');
@@ -772,6 +751,17 @@ export async function confirmarReasignacion(params: {
       for (const b of bookings) {
         if (!b.vueloPropuesto) continue;
 
+        const confirmed = await tx.booking.updateMany({
+          where: {
+            id: b.id,
+            status: BookingStatus.REASIGNACION_PROPUESTA,
+            respuestaPasajero: { not: 'RECHAZA' },
+            vueloPropuestoId: b.vueloPropuesto.id,
+          },
+          data: { status: BookingStatus.REPROGRAMADA, propuestaMotivo: 'Confirmado por Admin' },
+        });
+        if (!confirmed.count) throw ApiError.conflict('La propuesta cambió. Actualizá la lista y volvé a confirmar.');
+
         // Actualizar BookingFlight al nuevo vuelo
         const currentLeg = b.flights[0];
         const fareClass = normalizeClassName(undefined, b.cabinClass);
@@ -790,14 +780,11 @@ export async function confirmarReasignacion(params: {
           });
         }
 
-        // Marcar como REPROGRAMADA
-        await tx.booking.update({
-          where: { id: b.id },
-          data: {
-            status: BookingStatus.REPROGRAMADA,
-            propuestaMotivo: 'Confirmado por Admin',
-          },
-        });
+        if (currentLeg && currentLeg.flightId !== b.vueloPropuesto.id) {
+          await notifyBookingRescheduled(tx, {
+            bookingId: b.id, fromFlightId: currentLeg.flightId, toFlightId: b.vueloPropuesto.id, origin,
+          });
+        }
 
         await audit({
           userId,
@@ -824,7 +811,7 @@ export async function confirmarReasignacion(params: {
 /**
  * US-12B: Confirmar todas las reservas pendientes sin respuesta (política 24h).
  */
-export async function confirmarPendientesSinRespuesta(flightId: string, userId?: string) {
+export async function confirmarPendientesSinRespuesta(flightId: string, userId?: string, origin?: string) {
   const pendingBookings = await prisma.booking.findMany({
     where: {
       OR: [
@@ -845,6 +832,7 @@ export async function confirmarPendientesSinRespuesta(flightId: string, userId?:
   return confirmarReasignacion({
     bookingIds: pendingBookings.map((b) => b.id),
     userId,
+    origin,
   });
 }
 
@@ -983,8 +971,9 @@ export async function cambiarVueloReserva(params: {
   bookingIdOrCode: string;
   newFlightId: string;
   userId?: string;
+  origin?: string;
 }) {
-  const { bookingIdOrCode, newFlightId, userId } = params;
+  const { bookingIdOrCode, newFlightId, userId, origin = 'http://localhost:3000' } = params;
 
   const booking = await prisma.booking.findFirst({
     where: {
@@ -1123,14 +1112,20 @@ export async function cambiarVueloReserva(params: {
       const wasAlreadyReprogrammed = booking.status === BookingStatus.REPROGRAMADA;
 
       if (wasAlreadyReprogrammed && currentLeg) {
-        await tx.bookingFlight.update({
-          where: { id: currentLeg.id },
+        const changed = await tx.bookingFlight.updateMany({
+          where: { id: currentLeg.id, flightId: currentLeg.flightId },
           data: {
             flightId: newFlight.id,
             departureAt: newFlight.departureAt,
             fareId: matchingFare ? matchingFare.fareId : currentLeg.fareId,
           },
         });
+        if (!changed.count) throw ApiError.conflict('El vuelo de la reserva cambió. Actualizá la lista.');
+        if (currentLeg.flightId !== newFlight.id) {
+          await notifyBookingRescheduled(tx, {
+            bookingId: booking.id, fromFlightId: currentLeg.flightId, toFlightId: newFlight.id, origin,
+          });
+        }
       }
 
       // 5. Actualizar estado y vuelo propuesto
@@ -1177,8 +1172,9 @@ export async function cambiarVueloReserva(params: {
 export async function cancelarReservaContingencia(params: {
   bookingIdOrCode: string;
   userId?: string;
+  origin?: string;
 }) {
-  const { bookingIdOrCode, userId } = params;
+  const { bookingIdOrCode, userId, origin = 'http://localhost:3000' } = params;
 
   const booking = await prisma.booking.findFirst({
     where: {
@@ -1200,6 +1196,18 @@ export async function cancelarReservaContingencia(params: {
 
   await prisma.$transaction(
     async (tx) => {
+      const cancelled = await tx.booking.updateMany({
+        where: { id: booking.id, status: { not: BookingStatus.CANCELLED } },
+        data: {
+          status: BookingStatus.CANCELLED,
+          reembolsoPendiente: true,
+          notes: 'Contingencia – rechaza alternativas',
+          propuestaMotivo: 'Cancelado por rechazo de alternativas',
+          respuestaPasajero: 'RECHAZA',
+        },
+      });
+      if (!cancelled.count) throw ApiError.conflict('La reserva ya estaba cancelada');
+
       // 1. Reponer cupo en el vuelo propuesto si tenía
       if (booking.vueloPropuestoId && booking.vueloPropuesto) {
         const fareRow = await tx.flightFare.findFirst({
@@ -1224,17 +1232,7 @@ export async function cancelarReservaContingencia(params: {
         data: { seatId: null },
       });
 
-      // 3. Cancelar reserva con motivo oficial
-      await tx.booking.update({
-        where: { id: booking.id },
-        data: {
-          status: BookingStatus.CANCELLED,
-          reembolsoPendiente: true,
-          notes: 'Contingencia – rechaza alternativas',
-          propuestaMotivo: 'Cancelado por rechazo de alternativas',
-          respuestaPasajero: 'RECHAZA',
-        },
-      });
+      await notifyBookingCancelled(tx, booking.id, origin, true);
 
       // 4. Auditoría
       await audit({

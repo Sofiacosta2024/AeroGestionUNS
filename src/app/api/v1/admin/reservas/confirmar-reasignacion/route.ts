@@ -8,9 +8,10 @@ export const dynamic = 'force-dynamic';
 export const POST = handler(async (req: Request) => {
   const user = await requireRole(UserRole.ADMIN);
   const body = await req.json();
+  const origin = new URL(req.url).origin;
 
   if (body.mode === 'pending_no_response' && body.flightId) {
-    const result = await confirmarPendientesSinRespuesta(body.flightId, user.id);
+    const result = await confirmarPendientesSinRespuesta(body.flightId, user.id, origin);
     return ok(result);
   }
 
@@ -18,6 +19,7 @@ export const POST = handler(async (req: Request) => {
   const result = await confirmarReasignacion({
     bookingIds,
     userId: user.id,
+    origin,
   });
 
   return ok(result);

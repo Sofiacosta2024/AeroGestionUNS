@@ -735,6 +735,8 @@ enum EmailDispatchStatus {
 enum EmailKind {
   RECEIPT
   ITINERARY_CHANGE
+  FLIGHT_CANCELLED
+  BOOKING_CANCELLED
 }
 
 // Outbox transaccional: Redis transporta IDs, nunca datos personales.

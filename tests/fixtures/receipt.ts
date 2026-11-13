@@ -4,6 +4,6 @@ export function sampleReceipt(): ReceiptSnapshot {
     documents: { bookingCode: 'AG-ABC234', currency: 'ARS', passes: [{ bookingCode: 'AG-ABC234', passengerName: 'Lucía Gómez', documentType: 'DNI', documentNumber: '39112804',
       seat: '12A', cabinClass: 'Economy', flightCode: 'AG-1420', origin: { code: 'BHI', city: 'Bahía Blanca' }, destination: { code: 'AEP', city: 'Buenos Aires' },
       departureAt: '2027-01-01T09:45:00.000Z', arrivalAt: '2027-01-01T10:55:00.000Z' }],
-      invoice: { buyerName: 'Lucía Gómez', buyerDocumentType: 'DNI', buyerDocumentNumber: '39112804', voucherType: 'B', reference: 'COUNTER-test', currency: 'ARS',
+      invoice: { buyerName: 'Lucía Gómez', buyerDocumentType: 'DNI', buyerDocumentNumber: '39112804', contactEmail: 'lucia@example.com', voucherType: 'B', reference: 'COUNTER-test', currency: 'ARS',
         lines: [{ label: 'Tarifa base', amount: 100 }], total: 100 } } };
 }

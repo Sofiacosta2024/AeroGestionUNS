@@ -17,6 +17,7 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
     bookingIdOrCode: bookingCode,
     newFlightId,
     userId: user.id,
+    origin: new URL(req.url).origin,
   });
 
   return ok(result);

@@ -46,6 +46,7 @@ export type InvoiceDocument = {
   buyerName: string;
   buyerDocumentType: string;
   buyerDocumentNumber: string;
+  contactEmail?: string;
   voucherType: 'B' | 'C';
   reference: string;
   currency: string;
@@ -104,6 +105,7 @@ export function toTravelDocuments(booking: BookingForDocuments): TravelDocuments
     buyerName: buyer ? `${buyer.firstName} ${buyer.lastName}`.trim() : 'Consumidor final',
     buyerDocumentType: buyer?.documentType ?? 'DNI',
     buyerDocumentNumber: buyer?.documentNumber ?? '-',
+    contactEmail: booking.contactEmail,
     voucherType: VOUCHER_TYPE,
     reference: payment?.transactionRef ?? payment?.id ?? booking.bookingCode,
     currency,

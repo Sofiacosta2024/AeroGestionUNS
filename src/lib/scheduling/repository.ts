@@ -282,7 +282,9 @@ export function findFlightToReschedule(db: Db, id: string): Promise<FlightToResc
  * Reservas con pasaje emitido en el vuelo: pagadas, confirmadas o reasignadas a este vuelo por la
  * cancelacion de otro (US-12B). Son las que reciben el aviso por email (US-06A).
  */
-export const TICKETED_STATUSES: BookingStatus[] = [BookingStatus.CONFIRMED, BookingStatus.PAID, BookingStatus.REASIGNADO];
+export const TICKETED_STATUSES: BookingStatus[] = [
+  BookingStatus.CONFIRMED, BookingStatus.PAID, BookingStatus.REASIGNADO, BookingStatus.REPROGRAMADA,
+];
 
 /** Reservas del vuelo que siguen en pie: con pasaje emitido o pendientes con el bloqueo vigente. */
 function activeBookingsOf(flightId: string, now: Date): Prisma.BookingWhereInput {

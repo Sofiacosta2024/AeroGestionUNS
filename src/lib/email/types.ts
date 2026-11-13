@@ -11,6 +11,7 @@ export const receiptSnapshotSchema = z.object({
       departureAt: z.string().datetime(), arrivalAt: z.string().datetime(),
     })).min(1),
     invoice: z.object({ buyerName: z.string(), buyerDocumentType: z.string(), buyerDocumentNumber: z.string(),
+      contactEmail: z.string().optional(),
       voucherType: z.enum(['B', 'C']), reference: z.string(), currency: z.string(),
       lines: z.array(z.object({ label: z.string(), amount: z.number().finite() })), total: z.number().positive(),
     }),

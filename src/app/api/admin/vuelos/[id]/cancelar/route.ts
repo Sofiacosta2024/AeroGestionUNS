@@ -1,7 +1,7 @@
 import { UserRole } from '@prisma/client';
 import { handler, ok, parseBody } from '@/lib/api';
 import { requireRole } from '@/lib/auth';
-import { cancelarVuelo, getCancelacionInfo, type MotivoCancelacion } from '@/lib/contingencias';
+import { cancelarVuelo, getCancelacionInfo, MOTIVOS_CANCELACION } from '@/lib/contingencias';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 type Ctx = { params: Promise<{ id: string }> };
 
 const cancelSchema = z.object({
-  reason: z.enum(['Clima', 'Mantenimiento', 'Operativo'] as const, {
+  reason: z.enum(MOTIVOS_CANCELACION, {
     errorMap: () => ({ message: 'El motivo debe ser Clima, Mantenimiento u Operativo' }),
   }),
 });
@@ -34,6 +34,6 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
   const { id } = await ctx.params;
   const body = await parseBody(req, cancelSchema);
 
-  const result = await cancelarVuelo(id, body.reason as MotivoCancelacion, user.id);
+  const result = await cancelarVuelo({ flightId: id, reason: body.reason, userId: user.id, origin: new URL(req.url).origin });
   return ok(result);
 });

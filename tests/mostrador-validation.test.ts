@@ -8,6 +8,17 @@ const valid = {
   contactPhone: '2914567890', paymentMethod: 'CASH',
   passengers: [{ firstName: 'Lucía Belén', lastName: 'Gómez', documentNumber: '39112804' }],
 };
+
+test('crédito y débito requieren los datos de la tarjeta simulada', () => {
+  const card = { cardNumber: '4242424242424242', cardholder: 'Lucía Gómez', expiry: '12/99', cvv: '123' };
+  for (const paymentMethod of ['CREDIT_CARD', 'DEBIT_CARD']) {
+    const missing = counterSaleSchema.safeParse({ ...valid, paymentMethod });
+    assert.equal(missing.success, false);
+    if (!missing.success) assert.ok(counterFieldErrors(missing.error.issues)['card.cardNumber']);
+    assert.equal(counterSaleSchema.safeParse({ ...valid, paymentMethod, card }).success, true);
+    assert.equal(counterSaleSchema.safeParse({ ...valid, paymentMethod, card: { ...card, cvv: '123a' } }).success, false);
+  }
+});
 test('mostrador valida 1 a 9 viajeros y datos de identificación', () => {
   assert.equal(counterSaleSchema.safeParse(valid).success, true);
   for (const n of [0, 10]) assert.equal(counterSaleSchema.safeParse({ ...valid, passengers: Array(n).fill(valid.passengers[0]) }).success, false);

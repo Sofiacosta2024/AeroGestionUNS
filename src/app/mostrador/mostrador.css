@@ -26,6 +26,7 @@
 .counter-main .counter-primary{background:#eb1248;color:white;border-color:#eb1248}
 .counter-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
 .counter-fields{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.counter-card-fields .counter-field:nth-child(-n+2){grid-column:1/-1}
 .counter-main fieldset{margin:0 0 18px;border:0;padding:0}
 .counter-main legend{font-weight:700;margin-bottom:12px}
 .counter-table-wrap{overflow-x:auto;border:1px solid #d4d9fb;border-radius:12px;background:white;margin-bottom:18px}

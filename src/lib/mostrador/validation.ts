@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { paymentSchema } from '../validation';
+
+const counterCardSchema = paymentSchema.pick({ cardNumber: true, cardholder: true, expiry: true, cvv: true });
 
 const name = (label: string) => z.string().trim().min(1, `Ingresá el ${label}.`).max(80, 'Usá hasta 80 caracteres.')
   .refine(value => !value || /^\p{L}[\p{L}\p{M}]*(?: +\p{L}[\p{L}\p{M}]*)*$/u.test(value), 'Ingresá sólo letras y espacios.')
@@ -19,7 +22,10 @@ export const counterSaleSchema = z.object({
   contactEmail: z.string().trim().min(1, 'Ingresá el email.').email('Ingresá un email válido.').max(160, 'Usá hasta 160 caracteres.').transform(v => v.toLowerCase()),
   contactPhone: z.string().min(1, 'Ingresá el teléfono.').regex(/^\d{8,15}$/, 'El teléfono debe tener entre 8 y 15 dígitos.'),
   paymentMethod: z.enum(['CASH', 'DEBIT_CARD', 'CREDIT_CARD']),
+  card: counterCardSchema.optional(),
 }).superRefine((v, ctx) => {
+  if (v.paymentMethod !== 'CASH' && !v.card)
+    ctx.addIssue({ code: 'custom', path: ['card', 'cardNumber'], message: 'Ingresá los datos de la tarjeta.' });
   const ids = v.passengers.map(p => p.seatId).filter(Boolean);
   v.passengers.forEach((p, i) => {
     if (v.seatMode === 'MANUAL' && !p.seatId)
@@ -39,7 +45,7 @@ export function counterFieldErrors(issues: { path: (string | number)[]; message:
   const errors: CounterFieldErrors = {};
   for (const issue of issues) {
     const key = issue.path.join('.');
-    if (/^(contactEmail|contactPhone|passengers\.\d+\.(firstName|lastName|documentNumber|seatId))$/.test(key) && !errors[key]) errors[key] = issue.message;
+    if (/^(contactEmail|contactPhone|card\.(cardNumber|cardholder|expiry|cvv)|passengers\.\d+\.(firstName|lastName|documentNumber|seatId))$/.test(key) && !errors[key]) errors[key] = issue.message;
   }
   return errors;
 }

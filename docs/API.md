@@ -305,7 +305,7 @@ reserva con pasaje (WF-06A) en la outbox de la US-13. Lo envía el worker de com
 `PATCH` responde `notifications: { queued, skipped }`, y lo mismo queda en la auditoría.
 `skipped` cuenta las reservas cuyo email o código no sirven para el correo. Las compras
 pendientes de pago no reciben aviso. El endpoint previo `PATCH /api/flights/:id` también
-encola el aviso. Ver [US-06A-AVISO-REPROGRAMACION.md](US-06A-AVISO-REPROGRAMACION.md).
+encola el aviso. Ver [Avisos por reprogramación y cancelación de vuelos](USs-06AB-AVISOS-DE-VUELO.md).
 
 ## Tarifas y capacidad por clase (US-11A)
 

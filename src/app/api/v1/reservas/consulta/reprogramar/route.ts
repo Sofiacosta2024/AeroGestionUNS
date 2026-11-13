@@ -5,6 +5,7 @@ import { BOOKABLE_STATUSES } from '@/lib/flights';
 import { LOCK_DURATION_MS, releaseExpiredSeatLocks } from '@/lib/seat-locks';
 import { generateShortCode } from '@/lib/codes';
 import { prisma } from '@/lib/prisma';
+import { notifyBookingRescheduled } from '@/lib/scheduling/itinerary-notices';
 import { findPublicBooking, toPublicBookingView } from '@/lib/public-booking';
 import { bookingReprogramSchema } from '@/lib/validation';
 import { toUtcRange } from '@/lib/dates';
@@ -314,6 +315,9 @@ export const POST = handler(async (req: Request) => {
       })),
     });
 
+    await notifyBookingRescheduled(tx, {
+      bookingId: lockedBooking.id, fromFlightId: oldLeg.flightId, toFlightId: replacement.id, origin: new URL(req.url).origin,
+    });
     return { oldFlightCode: oldLeg.flight.code, newFlightCode: replacement.code };
   }, {
     isolationLevel: Prisma.TransactionIsolationLevel.Serializable,

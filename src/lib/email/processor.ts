@@ -1,14 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import { prisma } from '../prisma';
+import { bookingCancellationSnapshotSchema, cancellationSnapshotSchema } from './cancellation-snapshot';
 import { itinerarySnapshotSchema } from './itinerary-snapshot';
-import { DeliveryError, sendItineraryEmail, sendReceiptEmail } from './provider';
+import { DeliveryError, sendBookingCancellationEmail, sendCancellationEmail, sendItineraryEmail, sendReceiptEmail } from './provider';
 import { receiptSnapshotSchema } from './types';
 
 export const RETRY_DELAYS_MS = [5000, 15000, 30000] as const;
 export const MAX_EMAIL_ATTEMPTS = 4;
 type Options = {
   db?: PrismaClient; now?: () => Date; send?: typeof sendReceiptEmail; sendItinerary?: typeof sendItineraryEmail; recipient?: string;
+  sendCancellation?: typeof sendCancellationEmail;
+  sendBookingCancellation?: typeof sendBookingCancellationEmail;
 };
 
 export async function processReceiptDispatch(dispatchId: string, options: Options = {}) {
@@ -33,10 +36,16 @@ export async function processReceiptDispatch(dispatchId: string, options: Option
   });
   if (!dispatch) return;
   try {
-    // Cambio US-06A: la outbox tambien lleva avisos de reprogramacion. Solo cambia que se arma y
-    // se envia; el lease, los reintentos y el estado final son los mismos para los dos tipos.
     let sent: { providerMessageId: string };
-    if (dispatch.kind === 'ITINERARY_CHANGE') {
+    if (dispatch.kind === 'FLIGHT_CANCELLED') {
+      const parsed = cancellationSnapshotSchema.safeParse(dispatch.snapshot);
+      if (!parsed.success) throw new DeliveryError('Los datos del aviso de cancelación no son válidos', false);
+      sent = await (options.sendCancellation ?? sendCancellationEmail)(parsed.data, `cancel-${dispatch.id}`);
+    } else if (dispatch.kind === 'BOOKING_CANCELLED') {
+      const parsed = bookingCancellationSnapshotSchema.safeParse(dispatch.snapshot);
+      if (!parsed.success) throw new DeliveryError('Los datos de la reserva cancelada no son válidos', false);
+      sent = await (options.sendBookingCancellation ?? sendBookingCancellationEmail)(parsed.data, `booking-cancelled-${dispatch.id}`);
+    } else if (dispatch.kind === 'ITINERARY_CHANGE') {
       const parsed = itinerarySnapshotSchema.safeParse(dispatch.snapshot);
       if (!parsed.success) throw new DeliveryError('Los datos del aviso de reprogramación no son válidos', false);
       sent = await (options.sendItinerary ?? sendItineraryEmail)(parsed.data, `itinerary-${dispatch.id}`);

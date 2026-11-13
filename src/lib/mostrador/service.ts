@@ -7,6 +7,7 @@ import { emitirComprobantes } from '../comprobante-emission';
 import { enqueueReceipt, receiptSnapshot } from '../email/outbox';
 import { queuedEmail } from '../email/types';
 import { BOOKABLE_STATUSES } from '../flights';
+import { mockPaymentStatus } from '../mock-payment';
 import { seatSelectionUnitFee } from '../seat-pricing';
 import { prisma } from '../prisma';
 import { lockSeatsAtomic, releaseExpiredSeatLocks } from '../seat-locks';
@@ -38,7 +39,7 @@ export async function quoteCounterSale(input: CounterQuoteInput, user: AuthUser,
 /** Una sola transacción decide cupo, asiento, pago, comprobantes y outbox. */
 export async function createCounterSale(raw: CounterSaleInput, user: AuthUser, db: PrismaClient = prisma): Promise<CounterSaleResult> {
   requireOperator(user);
-  const input = counterSaleSchema.parse(raw);
+  const { card, ...input } = counterSaleSchema.parse(raw);
   const payloadHash = createHash('sha256').update(JSON.stringify(input)).digest('hex');
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -54,6 +55,9 @@ export async function createCounterSale(raw: CounterSaleInput, user: AuthUser, d
           return { bookingCode: existing.booking.bookingCode, displayCode: existing.booking.bookingCode.replace(/^AG-/, ''),
             paymentId: existing.paymentId, totalAmount: existing.payment.amount.toFixed(2), currency: existing.payment.currency,
             email: queuedEmail(dispatch.id), reused: true };
+        }
+        if (input.paymentMethod !== 'CASH' && card && mockPaymentStatus(card.cardNumber) === 'REJECTED') {
+          throw new ApiError(422, 'Pago rechazado. Ingresá otro número de tarjeta de prueba.', 'PAYMENT_REJECTED');
         }
         await releaseExpiredSeatLocks(tx);
         const quote = await quoteCounterSale({ ...input, passengersCount: input.passengers.length }, user, tx, false);
@@ -90,7 +94,7 @@ export async function createCounterSale(raw: CounterSaleInput, user: AuthUser, d
         await emitirComprobantes(tx, payment, locked.bookingId);
         const booking = await tx.booking.findUniqueOrThrow({ where: { id: locked.bookingId }, include: comprobanteInclude });
         const { dispatchId } = await enqueueReceipt(tx, { bookingId: booking.id, paymentId: payment.id,
-          dedupeKey: `payment-${payment.id}`, recipient: input.contactEmail, snapshot: receiptSnapshot(booking) });
+          dedupeKey: `payment-${payment.id}`, recipient: booking.contactEmail, snapshot: receiptSnapshot(booking) });
         await tx.auditLog.create({ data: { userId: user.id, action: 'COUNTER_SALE', entity: 'Booking', entityId: booking.id,
           metadata: { paymentId: payment.id, method: input.paymentMethod, branch: process.env.MOSTRADOR_BRANCH_NAME || 'Bahía Blanca' } } });
         return { bookingCode: booking.bookingCode, displayCode: booking.bookingCode.replace(/^AG-/, ''),

@@ -7,13 +7,14 @@ export const dynamic = 'force-dynamic';
 
 type Ctx = { params: Promise<{ bookingCode: string }> };
 
-export const POST = handler(async (_req: Request, ctx: Ctx) => {
+export const POST = handler(async (req: Request, ctx: Ctx) => {
   const user = await requireRole(UserRole.ADMIN);
   const { bookingCode } = await ctx.params;
 
   const result = await cancelarReservaContingencia({
     bookingIdOrCode: bookingCode,
     userId: user.id,
+    origin: new URL(req.url).origin,
   });
 
   return ok(result);

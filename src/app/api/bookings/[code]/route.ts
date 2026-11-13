@@ -9,6 +9,7 @@ import {
   serializeBooking,
 } from '@/lib/bookings';
 import { prisma } from '@/lib/prisma';
+import { notifyBookingCancelled } from '@/lib/scheduling/booking-cancellation-notices';
 import { bookingUpdateSchema } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
@@ -52,10 +53,18 @@ export const PATCH = handler(async (req: Request, ctx: Ctx) => {
   });
   if (!existing) throw ApiError.notFound('Reserva no encontrada');
 
-  const booking = await prisma.booking.update({
-    where: { id: existing.id },
-    data: body,
-    include: bookingInclude,
+  const booking = await prisma.$transaction(async (tx) => {
+    if (body.status === BookingStatus.CANCELLED) {
+      const changed = await tx.booking.updateMany({
+        where: { id: existing.id, status: { not: BookingStatus.CANCELLED } },
+        data: body,
+      });
+      if (changed.count) {
+        await notifyBookingCancelled(tx, existing.id, new URL(req.url).origin);
+        return tx.booking.findUniqueOrThrow({ where: { id: existing.id }, include: bookingInclude });
+      }
+    }
+    return tx.booking.update({ where: { id: existing.id }, data: body, include: bookingInclude });
   });
 
   await audit({
@@ -74,7 +83,7 @@ export const PATCH = handler(async (req: Request, ctx: Ctx) => {
  * Se cancela en vez de borrar para conservar el historial y los pases emitidos,
  * y se devuelve la disponibilidad a las tarifas.
  */
-export const DELETE = handler(async (_req: Request, ctx: Ctx) => {
+export const DELETE = handler(async (req: Request, ctx: Ctx) => {
   const { code } = await ctx.params;
   const user = await requireRole(UserRole.MOSTRADOR);
 
@@ -89,21 +98,23 @@ export const DELETE = handler(async (_req: Request, ctx: Ctx) => {
   }
 
   await prisma.$transaction(async (tx) => {
+    const changed = await tx.booking.updateMany({
+      where: { id: existing.id, status: { not: BookingStatus.CANCELLED } },
+      data: { status: BookingStatus.CANCELLED },
+    });
+    if (!changed.count) throw ApiError.conflict('La reserva ya estaba cancelada');
     for (const bf of existing.flights) {
       await tx.flightFare.updateMany({
         where: { flightId: bf.flightId, fareId: bf.fareId },
         data: { availableSeats: { increment: 1 } },
       });
     }
-    await tx.booking.update({
-      where: { id: existing.id },
-      data: { status: BookingStatus.CANCELLED },
-    });
     // Los pases de abordaje emitidos quedan anulados.
     await tx.boardingPass.updateMany({
       where: { bookingPassenger: { bookingId: existing.id } },
       data: { status: 'CANCELLED' },
     });
+    await notifyBookingCancelled(tx, existing.id, new URL(req.url).origin);
   });
 
   await audit({
