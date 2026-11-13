@@ -166,6 +166,7 @@ model User {
   flightSchedules FlightSchedule[]
   counterSales CounterSale[]
   savedPassengers SavedPassenger[]
+  pushDevices PushDevice[]
 
   @@index([role])
   @@index([isActive])
@@ -186,6 +187,54 @@ model Session {
   @@index([userId])
   @@index([expiresAt])
   @@map("sessions")
+}
+
+/// Dispositivos asociados a una cuenta, reserva o vuelo para avisos push (web y móvil).
+model PushDevice {
+  id                       String                       @id @default(cuid())
+  pushToken                String                       @unique @map("push_token") @db.VarChar(512)
+  deviceType               String?                      @default("ANDROID") @map("device_type") @db.VarChar(32)
+  userId                   String?                      @map("user_id")
+  bookingId                String?                      @map("booking_id")
+  bookingCode              String?                      @map("booking_code") @db.VarChar(12)
+  flightId                 String?                      @map("flight_id")
+  isActive                 Boolean                      @default(true) @map("is_active")
+  lastSeenAt               DateTime                     @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+  createdAt                DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
+  pushP256dh               String?                      @map("push_p256dh") @db.VarChar(255)
+  pushAuth                 String?                      @map("push_auth") @db.VarChar(255)
+  notifications            DeviceNotification[]
+  booking                  Booking?                     @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  flight                   Flight?                      @relation(fields: [flightId], references: [id])
+  user                     User?                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([bookingCode])
+  @@index([bookingId])
+  @@index([flightId])
+  @@index([isActive])
+  @@map("dispositivos_push")
+}
+
+model DeviceNotification {
+  id          String     @id
+  deviceId    String     @map("dispositivo_id")
+  title       String     @map("titulo") @db.VarChar(120)
+  message     String     @map("mensaje") @db.VarChar(500)
+  type        String     @map("tipo") @db.VarChar(32)
+  flightCode  String?    @map("flight_code") @db.VarChar(12)
+  bookingCode String?    @map("booking_code") @db.VarChar(12)
+  data        Json?
+  sentAt      DateTime   @default(now()) @map("sent_at") @db.Timestamptz(3)
+  deliveredAt DateTime?  @map("delivered_at") @db.Timestamptz(3)
+  latencyMs   Int?       @map("latency_ms")
+  device      PushDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId])
+  @@index([sentAt])
+  @@index([type])
+  @@map("dispositivo_notificaciones")
 }
 
 model AuditLog {
@@ -329,6 +378,7 @@ model Flight {
   fares         FlightFare[]
   bookingFlights BookingFlight[]
   proposedBookings Booking[] @relation("ProposedBookings")
+  pushDevices      PushDevice[]
   seatLocks     SeatLock[]
 
   /// Una aeronave no puede tener dos salidas en el mismo instante (RF-01, factibilidad)
@@ -542,6 +592,7 @@ model Booking {
   seatLocks       SeatLock[]
   comprobantes    Comprobante[]
   counterSale CounterSale?
+  pushDevices PushDevice[]
   emailDispatches EmailDispatch[]
 
   @@index([userId])

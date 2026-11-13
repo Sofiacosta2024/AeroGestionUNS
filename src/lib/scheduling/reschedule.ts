@@ -2,6 +2,7 @@ import { AircraftStatus, FlightStatus, type Prisma } from '@prisma/client';
 import { ApiError } from '@/lib/api';
 import { toDateInput } from '@/lib/format';
 import { prisma } from '@/lib/prisma';
+import { notifyFlightMobileDevices } from '@/lib/notifications/expo-push';
 import type { RescheduleInput } from '@/lib/validation';
 import { addMinutes, localDateTimeToUtc, localTimeOf } from './calendar';
 import { CABIN_LABEL, classLoadOf, fitClassesToCabins, type OfferIssue } from './capacity';
@@ -216,7 +217,7 @@ export async function rescheduleFlight(
   input: RescheduleInput,
   options: { origin: string },
 ): Promise<RescheduleResult> {
-  return prisma.$transaction(
+  const result = await prisma.$transaction(
     async (tx) => {
       await repo.lockScheduling(tx);
       await repo.lockFlight(tx, flightId);
@@ -262,6 +263,16 @@ export async function rescheduleFlight(
     },
     { maxWait: 10_000, timeout: 15_000 },
   );
+
+  await notifyFlightMobileDevices({
+    flightId: result.flightId,
+    flightCode: result.code,
+    kind: 'FLIGHT_RESCHEDULED',
+    title: 'Vuelo reprogramado',
+    body: `El vuelo ${result.code} fue reprogramado. Revisá el nuevo horario en Mis reservas.`,
+  });
+
+  return result;
 }
 
 /**
