@@ -11,8 +11,13 @@ const cabins = [
   { id: 'FIRST', label: 'Primera Clase' },
 ];
 const statusNames: Record<string, string> = { PROGRAMADO: 'PROGRAMADO', EN_EMBARQUE: 'EN_EMBARQUE', COMPLETADO: 'COMPLETADO', CANCELADO: 'CANCELADO' };
-const filters = [['TODOS', 'Todos'], ['PROGRAMADO', 'Programado'], ['EN_EMBARQUE', 'En embarque'], ['COMPLETADO', 'Completado'], ['CANCELADO', 'Cancelado']];
-
+const filters: [string, string][] = [
+  ['TODOS', 'Todos'],
+  ['PROGRAMADO', 'Programado'],
+  ['EN_EMBARQUE', 'En embarque'],
+  ['COMPLETADO', 'Completado'],
+  ['CANCELADO', 'Cancelado'],
+];
 function occupancyColor(pct: number) {
   return pct >= 80 ? '#16a06b' : pct >= 50 ? '#e0a000' : '#e11d48';
 }
