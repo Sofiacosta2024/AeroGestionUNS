@@ -43,8 +43,12 @@ test('protegidas: APIs internas de reservas, pagos y pasajes', () => {
 
 test('buscador público por GET; APIs internas y escrituras siguen protegidas', () => {
   assert.equal(isPublic(req('/api/flights')), true);
+  assert.equal(isPublic(req('/api/flights/f1')), true);
   assert.equal(isPublic(req('/api/flights/f1/seats')), true);
   assert.equal(isPublic({ url: 'http://localhost/api/flights', nextUrl: new URL('http://localhost/api/flights'), method: 'POST' } as never), false);
+  assert.equal(isPublic({ url: 'http://localhost/api/flights/f1', nextUrl: new URL('http://localhost/api/flights/f1'), method: 'POST' } as never), false);
+  assert.equal(isPublic({ url: 'http://localhost/api/flights/f1', nextUrl: new URL('http://localhost/api/flights/f1'), method: 'PATCH' } as never), false);
+  assert.equal(isPublic({ url: 'http://localhost/api/flights/f1', nextUrl: new URL('http://localhost/api/flights/f1'), method: 'DELETE' } as never), false);
   assert.equal(isPublic(req('/api/flights/f1/status')), false);
   assert.equal(isPublic(req('/api/passengers')), false);
   assert.equal(isPublic(req('/api/users')), false);

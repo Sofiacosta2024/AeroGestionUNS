@@ -22,6 +22,9 @@ const isPublicPage = createRouteMatcher([
 ]);
 const isFlightRead = createRouteMatcher([
   '/api/flights',
+  // El GET /api/flights/:id es de lectura publica; los metodos de escritura
+  // siguen protegidos porque isPublic valida tambien el metodo HTTP.
+  '/api/flights/([^/]+)',
   '/api/flights/([^/]+)/seats',
   // US-10A: la busqueda movil versionada es publica, igual que el buscador web.
   '/api/v1/mobile/vuelos',

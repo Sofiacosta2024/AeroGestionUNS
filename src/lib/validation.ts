@@ -725,3 +725,10 @@ export const mobilePaymentSchema = paymentSchema.extend({
 });
 
 export type MobilePaymentInput = z.output<typeof mobilePaymentSchema>;
+
+export const mobilePushTokenSchema = z.object({
+  pushToken: z.string().trim().min(1).max(512).regex(/^(ExpoPushToken|ExponentPushToken)\[[^\]]+\]$/, 'Token push de Expo invalido'),
+  platform: z.enum(['android', 'ios']),
+});
+
+export const mobilePushTokenDeleteSchema = mobilePushTokenSchema.pick({ pushToken: true });

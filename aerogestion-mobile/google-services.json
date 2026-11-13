@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "675411072398",
+    "project_id": "aerogestion-uns-mobile",
+    "storage_bucket": "aerogestion-uns-mobile.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:675411072398:android:0a5952b5b9faba246e40df",
+        "android_client_info": {
+          "package_name": "com.uns.aerogestionmobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBCqcEgU-JT2xB4ttI3sDUZA5dJrlV75hM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -62,6 +62,18 @@ export type MyBookingFlightView = {
   cabinClass: string;
 };
 
+/** Datos mínimos del e-ticket local, disponible al confirmarse el pago. */
+export type MyBookingTicketView = {
+  bookingCode: string;
+  ticketCode: string;
+  flightCode: string;
+  seat: string | null;
+  departureAt: string | null;
+  arrivalAt: string | null;
+  origin: MyBookingAirport | null;
+  destination: MyBookingAirport | null;
+};
+
 export type MyBookingView = {
   bookingCode: string;
   status: string;
@@ -74,6 +86,7 @@ export type MyBookingView = {
   /** ISO 8601 en UTC. */
   createdAt: string | null;
   flights: MyBookingFlightView[];
+  tickets: MyBookingTicketView[];
   /** Vuelo propuesto por la aerolinea durante una contingencia (si existe). */
   proposedFlight: MyBookingFlightView | null;
   proposalReason: string | null;

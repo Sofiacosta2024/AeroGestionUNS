@@ -3,6 +3,7 @@ import { ApiError } from './api';
 import { audit } from './audit';
 import { formatTime, toDateInput } from './format';
 import { prisma } from './prisma';
+import { notifyFlightMobileDevices } from './notifications/expo-push';
 
 export type MotivoCancelacion = 'Clima' | 'Mantenimiento' | 'Operativo';
 export const MOTIVOS_CANCELACION: MotivoCancelacion[] = ['Clima', 'Mantenimiento', 'Operativo'];
@@ -290,6 +291,14 @@ export async function cancelarVuelo(
     },
     { maxWait: 15000, timeout: 30000 },
   );
+
+  await notifyFlightMobileDevices({
+    flightId,
+    flightCode: flight.code,
+    kind: 'FLIGHT_CANCELLED',
+    title: 'Vuelo cancelado',
+    body: `El vuelo ${flight.code} fue cancelado. Abrí la app para consultar las opciones de tu reserva.`,
+  });
 
   // 2. Ejecutar inmediatamente el Motor de Reasignación Determinístico (US-12B)
   await generarPropuestas(flightId);
