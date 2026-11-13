@@ -15,7 +15,14 @@ import {
   reprogramarPasajeros,
 } from '@/lib/contingencias';
 
-test('US-12A y US-12B v2.0: Ciclo de vida completo de cancelación lógica y reasignación operativa', async () => {
+test('US-12A y US-12B v2.0: Ciclo de vida completo de cancelación lógica y reasignación operativa', async (t) => {
+  const originalAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+  process.env.NEXT_PUBLIC_APP_URL = 'aerogestion.example';
+  t.after(() => {
+    if (originalAppUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+    else process.env.NEXT_PUBLIC_APP_URL = originalAppUrl;
+  });
+  const origin = 'https://aerogestion.example';
   // 1. Setup: Buscar usuario admin real para el audit log
   const adminUser = await prisma.user.findFirst({ where: { role: 'ADMIN' } });
   const adminId = adminUser?.id;
@@ -273,7 +280,7 @@ test('US-12A y US-12B v2.0: Ciclo de vida completo de cancelación lógica y rea
         recipient: booking.contactEmail,
         greetingName: index === 0 ? 'Mariano' : 'Esteban',
         displayCode: booking.bookingCode,
-        bookingUrl: `${(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/+$/, '')}/reserva`,
+        bookingUrl: 'http://localhost:3000/reserva',
         reason: 'Clima',
         status: 'REASIGNACION_PROPUESTA',
         cancelled: { flightCode: flightA.code, departureAt: departureA.toISOString(), arrivalAt: arrivalA.toISOString() },
@@ -390,6 +397,7 @@ test('US-12A y US-12B v2.0: Ciclo de vida completo de cancelación lógica y rea
     await confirmarReasignacion({
       bookingIds: [booking1.id, booking2.id],
       userId: adminId,
+      origin,
     });
 
     const b1Confirmed = await prisma.booking.findUniqueOrThrow({
@@ -410,6 +418,7 @@ test('US-12A y US-12B v2.0: Ciclo de vida completo de cancelación lógica y rea
         where: { bookingId: booking.id, kind: 'ITINERARY_CHANGE' },
       });
       assert.equal(notice.recipient, booking.contactEmail);
+      assert.equal((notice.snapshot as { bookingUrl: string }).bookingUrl, `${origin}/reserva`);
     }
 
     // -------------------------------------------------------------
@@ -452,6 +461,7 @@ test('US-12A y US-12B v2.0: Ciclo de vida completo de cancelación lógica y rea
     await cancelarReservaContingencia({
       bookingIdOrCode: booking3.bookingCode,
       userId: adminId,
+      origin,
     });
 
     const b3Cancelled = await prisma.booking.findUniqueOrThrow({ where: { id: booking3.id } });
@@ -463,6 +473,7 @@ test('US-12A y US-12B v2.0: Ciclo de vida completo de cancelación lógica y rea
     });
     assert.equal(bookingCancellation.kind, 'BOOKING_CANCELLED');
     assert.equal(bookingCancellation.recipient, booking3.contactEmail);
+    assert.equal((bookingCancellation.snapshot as { bookingUrl: string }).bookingUrl, `${origin}/reserva`);
 
     // -------------------------------------------------------------
     // TEST 10: Wrappers de compatibilidad
@@ -494,7 +505,7 @@ test('US-12A y US-12B v2.0: Ciclo de vida completo de cancelación lógica y rea
       recipient: bookingWithoutAlternative.contactEmail,
       greetingName: 'Elena',
       displayCode: bookingWithoutAlternative.bookingCode,
-      bookingUrl: `${(process.env.NEXT_PUBLIC_APP_URL || 'https://aerogestion.example').replace(/\/+$/, '')}/reserva`,
+      bookingUrl: `${origin}/reserva`,
       reason: 'Mantenimiento',
       status: 'SIN_ALTERNATIVA',
       cancelled: { flightCode: flightC.code, departureAt: departureC.toISOString(), arrivalAt: arrivalC.toISOString() },

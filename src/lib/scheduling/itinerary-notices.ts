@@ -21,7 +21,15 @@ export type NoticeResult = {
 
 /** Link de «Ver Mi Reserva»: la consulta publica de la US-14A. */
 export function bookingLookupUrl(origin: string): string {
-  return `${(process.env.NEXT_PUBLIC_APP_URL || origin).replace(/\/+$/, '')}/reserva`;
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  const publicUrl = configured && /^https?:\/\//i.test(configured)
+    ? URL.parse(configured)
+    : null;
+  const url = publicUrl ?? new URL(origin);
+  url.pathname = `${url.pathname.replace(/\/+$/, '')}/reserva`;
+  url.search = '';
+  url.hash = '';
+  return url.href;
 }
 
 /**

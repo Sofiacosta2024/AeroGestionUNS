@@ -44,3 +44,18 @@ test('el link «Ver Mi Reserva» usa NEXT_PUBLIC_APP_URL y si no está, el orige
     else process.env.NEXT_PUBLIC_APP_URL = previous;
   }
 });
+
+test('una URL pública mal configurada no impide generar el aviso de la reserva', () => {
+  const previous = process.env.NEXT_PUBLIC_APP_URL;
+  try {
+    for (const invalid of ['unsaerogestion.vercel.app', 'https://', 'mailto:soporte@example.com']) {
+      process.env.NEXT_PUBLIC_APP_URL = invalid;
+      const url = bookingLookupUrl('https://app.example');
+      const notice = itineraryNotice(booking, leg, after, url, 'evt');
+      assert.equal(notice?.snapshot.bookingUrl, 'https://app.example/reserva', invalid);
+    }
+  } finally {
+    if (previous === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+    else process.env.NEXT_PUBLIC_APP_URL = previous;
+  }
+});
