@@ -4,7 +4,7 @@ import Svg, { Circle, Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '@/lib/theme';
 
-function TabIcon({ name, color, size }: { name: 'home' | 'flights' | 'tickets'; color: ColorValue; size: number }) {
+function TabIcon({ name, color, size }: { name: 'home' | 'flights' | 'tickets' | 'notifications'; color: ColorValue; size: number }) {
   if (name === 'flights') {
     return (
       <Svg width={size} height={size} viewBox="0 0 40 40" fill="none" accessibilityLabel="Vuelos">
@@ -19,6 +19,16 @@ function TabIcon({ name, color, size }: { name: 'home' | 'flights' | 'tickets'; 
       <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" accessibilityLabel="Pasajes">
         <Path d="M4 6.5h16a1.5 1.5 0 0 1 1.5 1.5v2.1a2.1 2.1 0 0 0 0 3.8V16a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 16v-2.1a2.1 2.1 0 0 0 0-3.8V8A1.5 1.5 0 0 1 4 6.5Z" stroke={color} strokeWidth={1.8} strokeLinejoin="round" />
         <Path d="M14.5 7.5v2m0 2v2m0 2v1" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeDasharray="0.5 1.5" />
+      </Svg>
+    );
+  }
+
+  if (name === 'notifications') {
+    return (
+      <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" accessibilityLabel="Notificaciones">
+        <Path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z" stroke={color} strokeWidth={1.8} strokeLinejoin="round" />
+        <Path d="M10 21h4" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
+        <Circle cx="18" cy="5" r="2" fill={color} />
       </Svg>
     );
   }
@@ -55,6 +65,7 @@ export default function PassengerTabsLayout() {
       <Tabs.Screen name="index" options={{ title: 'Inicio', tabBarIcon: ({ color, size }) => <TabIcon name="home" color={color} size={size} /> }} />
       <Tabs.Screen name="flights" options={{ title: 'Vuelos', tabBarIcon: ({ color, size }) => <TabIcon name="flights" color={color} size={size} /> }} />
       <Tabs.Screen name="tickets" options={{ title: 'Pasajes', tabBarIcon: ({ color, size }) => <TabIcon name="tickets" color={color} size={size} /> }} />
+      <Tabs.Screen name="notifications" options={{ title: 'Avisos', tabBarIcon: ({ color, size }) => <TabIcon name="notifications" color={color} size={size} /> }} />
     </Tabs>
   );
 }

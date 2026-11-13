@@ -4,8 +4,8 @@ import { ApiClientError, searchAvailableFlights, type FlightSearchFilters } from
 import type { MobileFlight } from '@/lib/api/types';
 import { theme } from '@/lib/theme';
 import { useAuth } from '@clerk/expo';
-import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 export default function FlightsScreen() {
@@ -19,8 +19,10 @@ export default function FlightsScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const lastSearchFilters = useRef<FlightSearchFilters>({});
 
   const runSearch = useCallback(async (filters: FlightSearchFilters) => {
+    lastSearchFilters.current = filters;
     setIsLoading(true);
     setError(null);
     try {
@@ -36,32 +38,17 @@ export default function FlightsScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    void searchAvailableFlights({})
-      .then((result) => {
-        if (!cancelled) {
-          setFlights(result.data);
-          setHasLoaded(true);
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof ApiClientError
-          ? err.message
-          : 'No se pudo conectar con el backend. Revisá la URL de la API y que el servidor esté iniciado.');
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-
-    return () => { cancelled = true; };
-  }, []);
+  useFocusEffect(useCallback(() => {
+    void runSearch(lastSearchFilters.current);
+  }, [runSearch]));
 
   return (
     <Screen
       eyebrow="VUELOS"
       title="Encontrá tu próximo viaje."
       description="Buscamos vuelos disponibles directamente en AeroGestión UNS."
+      compact
+      headerTitle="AeroGestión · Buscar"
     >
       <View style={styles.form}>
         <Text style={styles.label}>Origen (código IATA)</Text>
@@ -113,19 +100,19 @@ export default function FlightsScreen() {
 }
 
 const styles = StyleSheet.create({
-  form: { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: 18, borderWidth: 1, marginBottom: 28, padding: 16 },
-  label: { color: theme.colors.text, fontSize: 13, fontWeight: '600', marginBottom: 7 },
-  input: { backgroundColor: theme.colors.surfaceSoft, borderColor: theme.colors.border, borderRadius: 11, borderWidth: 1, color: theme.colors.text, fontSize: 15, marginBottom: 15, paddingHorizontal: 13, paddingVertical: 12 },
+  form: { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: 10, borderWidth: 1, marginBottom: 14, padding: 12 },
+  label: { color: theme.colors.muted, fontSize: 11, fontWeight: '700', marginBottom: 5 },
+  input: { backgroundColor: theme.colors.surfaceSoft, borderColor: theme.colors.border, borderRadius: 7, borderWidth: 1, color: theme.colors.text, fontSize: 13, marginBottom: 10, minHeight: 38, paddingHorizontal: 11, paddingVertical: 8 },
   passengerControl: { alignItems: 'center', flexDirection: 'row', gap: 16, marginBottom: 16, marginTop: 1 },
   countButton: { alignItems: 'center', backgroundColor: theme.colors.surfaceSoft, borderColor: theme.colors.border, borderRadius: 10, borderWidth: 1, height: 40, justifyContent: 'center', width: 44 },
   countButtonText: { color: theme.colors.brand, fontSize: 21, fontWeight: '600' },
   countText: { color: theme.colors.text, fontSize: 14, fontWeight: '600', minWidth: 90, textAlign: 'center' },
-  button: { alignItems: 'center', backgroundColor: theme.colors.accent, borderRadius: 12, marginTop: 3, padding: 14 },
-  buttonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  button: { alignItems: 'center', backgroundColor: theme.colors.accent, borderRadius: 7, marginTop: 3, padding: 11 },
+  buttonText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
   disabled: { opacity: 0.55 },
   pressed: { opacity: 0.78 },
   resultsHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 },
-  resultsTitle: { color: theme.colors.brand, fontSize: 18, fontWeight: '700' },
+  resultsTitle: { color: theme.colors.brand, fontSize: 15, fontWeight: '700' },
   error: { color: theme.colors.danger, fontSize: 14, lineHeight: 21, marginBottom: 16 },
   empty: { color: theme.colors.muted, fontSize: 14, lineHeight: 21 },
 });

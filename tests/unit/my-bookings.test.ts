@@ -223,6 +223,7 @@ test('US-15: partitionMyBookings no altera el orden recibido', () => {
     currency: 'ARS',
     createdAt: null,
     flights: [],
+    tickets: [],
     proposedFlight: null,
     proposalReason: null,
     passengerResponse: null,

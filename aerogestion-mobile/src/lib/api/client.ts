@@ -3,6 +3,7 @@ import type {
   FlightSeatMap,
   MobileFlight,
   MobilePaymentResult,
+  MobileNotificationsResponse,
   MobileReservationResult,
   MyBookingsResponse,
 } from './types';
@@ -144,4 +145,8 @@ export function payMobileReservation(
 
 export function getMyBookings(token: string) {
   return getJson<MyBookingsResponse>('/api/v1/pasajeros/mis-reservas', token);
+}
+
+export function getMobileNotifications(token: string) {
+  return getJson<MobileNotificationsResponse>('/api/v1/mobile/notifications', token);
 }

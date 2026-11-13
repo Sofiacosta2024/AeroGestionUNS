@@ -13,6 +13,24 @@ export function formatFlightDate(value: string | null): string {
   }).format(date);
 }
 
+export function formatTicketDate(value: string | null): string {
+  if (!value) return 'Fecha pendiente';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Fecha pendiente';
+  const dayMonth = new Intl.DateTimeFormat('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    timeZone: 'America/Argentina/Buenos_Aires',
+  }).format(date);
+  const time = new Intl.DateTimeFormat('es-AR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    timeZone: 'America/Argentina/Buenos_Aires',
+  }).format(date);
+  return `${dayMonth} · ${time}`;
+}
+
 export function formatPrice(amount: number, currency: string): string {
   try {
     return new Intl.NumberFormat('es-AR', { style: 'currency', currency }).format(amount);

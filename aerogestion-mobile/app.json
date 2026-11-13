@@ -28,7 +28,8 @@
       "expo-router",
       "@clerk/expo",
       "expo-secure-store",
-      "expo-notifications"
+      "expo-notifications",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true

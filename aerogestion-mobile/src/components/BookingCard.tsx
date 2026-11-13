@@ -1,7 +1,8 @@
 import type { MyBooking } from '@/lib/api/types';
 import { formatFlightDate, presentStatus } from '@/lib/format';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { theme } from '@/lib/theme';
+import { Link, type Href } from 'expo-router';
 
 export function BookingCard({ booking }: { booking: MyBooking }) {
   return (
@@ -19,6 +20,20 @@ export function BookingCard({ booking }: { booking: MyBooking }) {
           <Text style={styles.detail}>{formatFlightDate(flight.departureAt)}</Text>
           <Text style={styles.detail}>Vuelo: {presentStatus(flight.status)}</Text>
         </View>
+      ))}
+      {booking.tickets.map((ticket) => (
+        <Link
+          key={ticket.ticketCode}
+          href={{
+            pathname: '/ticket/[bookingCode]/[boardingPassCode]',
+            params: { bookingCode: booking.bookingCode, boardingPassCode: ticket.ticketCode },
+          } as unknown as Href}
+          asChild
+        >
+          <Pressable style={styles.ticketButton}>
+            <Text style={styles.ticketButtonText}>Ver mi E-Ticket · {ticket.flightCode}</Text>
+          </Pressable>
+        </Link>
       ))}
       {booking.proposedFlight && (
         <View style={styles.proposal}>
@@ -91,4 +106,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  ticketButton: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.brand,
+    borderRadius: theme.radius.control,
+    marginTop: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  ticketButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
 });

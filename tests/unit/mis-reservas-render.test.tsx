@@ -37,6 +37,7 @@ function booking(overrides: Partial<MyBookingView> = {}): MyBookingView {
         cabinClass: 'ECONOMY',
       },
     ],
+    tickets: [],
     proposedFlight: null,
     proposalReason: null,
     passengerResponse: 'PENDIENTE',

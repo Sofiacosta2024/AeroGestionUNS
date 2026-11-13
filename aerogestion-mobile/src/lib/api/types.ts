@@ -89,6 +89,17 @@ export type MyBookingFlight = {
   cabinClass: string;
 };
 
+export type MyBookingTicket = {
+  bookingCode: string;
+  ticketCode: string;
+  flightCode: string;
+  seat: string | null;
+  departureAt: string | null;
+  arrivalAt: string | null;
+  origin: AirportSummary | null;
+  destination: AirportSummary | null;
+};
+
 export type MyBooking = {
   bookingCode: string;
   status: string;
@@ -100,6 +111,7 @@ export type MyBooking = {
   currency: string;
   createdAt: string | null;
   flights: MyBookingFlight[];
+  tickets: MyBookingTicket[];
   proposedFlight: MyBookingFlight | null;
   proposalReason: string | null;
   passengerResponse: string | null;
@@ -109,3 +121,15 @@ export type MyBookingsResponse = {
   upcoming: MyBooking[];
   past: MyBooking[];
 };
+
+export type MobileNotification = {
+  id: string;
+  title: string;
+  message: string;
+  type: 'FLIGHT_RESCHEDULED' | 'FLIGHT_CANCELLED' | string;
+  flightCode: string | null;
+  bookingCode: string | null;
+  sentAt: string;
+};
+
+export type MobileNotificationsResponse = { notifications: MobileNotification[] };

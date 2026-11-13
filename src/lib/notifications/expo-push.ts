@@ -47,7 +47,12 @@ export async function notifyFlightMobileDevices(input: {
       select: { id: true, pushToken: true, bookingCode: true },
     });
     const expoDevices = devices.filter(({ pushToken }) => /^(ExpoPushToken|ExponentPushToken)\[[^\]]+\]$/.test(pushToken));
-    if (expoDevices.length === 0) return { accepted: 0, invalidated: 0 };
+    if (expoDevices.length === 0) {
+      console.warn(`[push] ${input.kind} ${input.flightCode}: no hay dispositivos Expo activos asociados (reservas=${bookingIds.length}, usuarios=${userIds.length}, dispositivosEncontrados=${devices.length}).`);
+      return { accepted: 0, invalidated: 0 };
+    }
+
+    console.info(`[push] ${input.kind} ${input.flightCode}: enviando a ${expoDevices.length} dispositivo(s) Expo.`);
 
     let accepted = 0;
     let invalidated = 0;
@@ -72,7 +77,7 @@ export async function notifyFlightMobileDevices(input: {
 
       const payload = await response.json().catch(() => null) as { data?: ExpoPushTicket[] } | null;
       if (!response.ok || !Array.isArray(payload?.data)) {
-        console.error(`[push] Expo rechazó el lote de ${input.kind} (HTTP ${response.status}).`);
+        console.error(`[push] Expo rechazó el lote de ${input.kind} (HTTP ${response.status}; respuesta=${JSON.stringify(payload)}).`);
         continue;
       }
 
@@ -83,6 +88,7 @@ export async function notifyFlightMobileDevices(input: {
         if (!device) return;
         if (ticket.status === 'ok') acceptedDevices.push(device);
         else if (ticket.details?.error === 'DeviceNotRegistered') invalidTokens.push(device.pushToken);
+        else console.error(`[push] Expo rechazó una notificación ${input.kind} para ${input.flightCode}: ${ticket.details?.error ?? 'error sin detalle'}.`);
       });
 
       accepted += acceptedDevices.length;
@@ -112,6 +118,7 @@ export async function notifyFlightMobileDevices(input: {
       }
     }
 
+    console.info(`[push] ${input.kind} ${input.flightCode}: Expo aceptó ${accepted}/${expoDevices.length}; tokens inválidos=${invalidated}.`);
     return { accepted, invalidated };
   } catch (error) {
     // Un problema con Expo no debe revertir la reprogramación o cancelación del vuelo.

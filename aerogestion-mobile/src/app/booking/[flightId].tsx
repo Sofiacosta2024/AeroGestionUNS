@@ -5,7 +5,7 @@ import { formatFlightDate, formatPrice } from '@/lib/format';
 import { theme } from '@/lib/theme';
 import { useAuth, useUser } from '@clerk/expo';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 type BookingStep = 'fare' | 'passengers' | 'payment' | 'confirmation';
@@ -182,29 +182,34 @@ export default function BookingScreen() {
   }
 
   if (!authLoaded || isLoading) {
-    return <Screen eyebrow="RESERVA" title="Preparando tu viaje" description="Estamos cargando el vuelo y la disponibilidad."><ActivityIndicator color={theme.colors.accent} /></Screen>;
+    return <Screen eyebrow="RESERVA" title="Preparando tu viaje" description="Estamos cargando el vuelo y la disponibilidad." compact headerTitle="AeroGestión · Buscar"><ActivityIndicator color={theme.colors.accent} /></Screen>;
   }
 
   if (!isSignedIn) {
     const returnTo = `/booking/${flightId}?passengers=${passengerCount}`;
-    return <Screen eyebrow="RESERVA" title="Iniciá sesión para continuar" description="La búsqueda es pública, pero para bloquear asientos y pagar necesitamos tu cuenta de pasajero."><Pressable onPress={() => router.replace({ pathname: '/login', params: { returnTo } })} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Iniciar sesión</Text></Pressable></Screen>;
+    return <Screen eyebrow="RESERVA" title="Iniciá sesión para continuar" description="La búsqueda es pública, pero para bloquear asientos y pagar necesitamos tu cuenta de pasajero." compact headerTitle="AeroGestión · Reserva"><Pressable onPress={() => router.replace({ pathname: '/login', params: { returnTo } })} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Iniciar sesión</Text></Pressable></Screen>;
   }
 
   if (!flight) {
-    return <Screen eyebrow="RESERVA" title={error ? 'No pudimos cargar este vuelo' : 'No encontramos este vuelo'} description={error ?? 'Volvé a la búsqueda e intentá con otro vuelo.'}><Pressable onPress={() => router.replace('/(tabs)/flights')} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>Volver a vuelos</Text></Pressable></Screen>;
+    return <Screen eyebrow="RESERVA" title={error ? 'No pudimos cargar este vuelo' : 'No encontramos este vuelo'} description={error ?? 'Volvé a la búsqueda e intentá con otro vuelo.'} compact headerTitle="AeroGestión · Reserva"><Pressable onPress={() => router.replace('/(tabs)/flights')} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>Volver a vuelos</Text></Pressable></Screen>;
   }
 
   const stepNumber = step === 'fare' ? 1 : step === 'passengers' ? 2 : step === 'payment' ? 3 : 4;
   const stepTitle = step === 'fare' ? 'Elegí tu tarifa' : step === 'passengers' ? 'Asientos y pasajeros' : step === 'payment' ? 'Pago de prueba' : 'Reserva confirmada';
+  const compactHeaderTitle = step === 'passengers'
+    ? `Elegí tu asiento · ${flight.code}`
+    : step === 'payment' || step === 'confirmation'
+      ? 'Pago'
+      : `Elegí tu tarifa · ${flight.code}`;
   const description = `${flight.code} · ${flight.route.originAirport.iataCode} → ${flight.route.destinationAirport.iataCode} · ${formatFlightDate(flight.departureAt)}`;
   const rows = currentSeatMap ? [...new Set(currentSeatMap.seats.filter((seat) => seat.allowedForFare).map((seat) => seat.rowNumber))].sort((a, b) => a - b) : [];
 
   return (
-    <Screen eyebrow={`RESERVA · PASO ${stepNumber} DE 4`} title={stepTitle} description={description}>
-      <View style={styles.summaryCard}>
+    <Screen eyebrow={`RESERVA · PASO ${stepNumber} DE 4`} title={stepTitle} description={description} compact headerTitle={compactHeaderTitle}>
+      {step !== 'confirmation' && <View style={styles.summaryCard}>
         <Text style={styles.summaryFlight}>{flight.code} · {flight.route.originAirport.city} → {flight.route.destinationAirport.city}</Text>
         <Text style={styles.summaryDate}>{formatFlightDate(flight.departureAt)}</Text>
-      </View>
+      </View>}
 
       {step === 'fare' && (
         <>
@@ -239,9 +244,11 @@ export default function BookingScreen() {
             <View style={styles.seatMap}>
               {rows.map((row) => (
                 <View key={row} style={styles.seatRow}>
-                  <Text style={styles.rowNumber}>{row}</Text>
-                  {currentSeatMap.seats.filter((seat) => seat.rowNumber === row && seat.allowedForFare).sort((a, b) => a.columnLetter.localeCompare(b.columnLetter)).map((seat) => (
-                    <SeatButton key={seat.id} seat={seat} selected={selectedSeatIds.includes(seat.id)} onPress={() => toggleSeat(seat)} />
+                  {currentSeatMap.seats.filter((seat) => seat.rowNumber === row && seat.allowedForFare).sort((a, b) => a.columnLetter.localeCompare(b.columnLetter)).map((seat, index, rowSeats) => (
+                    <Fragment key={seat.id}>
+                      {rowSeats.length >= 4 && index === Math.ceil(rowSeats.length / 2) && <View style={styles.aisle} />}
+                      <SeatButton seat={seat} selected={selectedSeatIds.includes(seat.id)} onPress={() => toggleSeat(seat)} />
+                    </Fragment>
                   ))}
                 </View>
               ))}
@@ -266,7 +273,7 @@ export default function BookingScreen() {
           ))}
           <View style={styles.totalBox}><Text style={styles.totalLabel}>Total estimado</Text><Text style={styles.totalValue}>{fare ? formatPrice(quotedTotal, fare.currency) : '—'}</Text></View>
           <Pressable disabled={isSubmitting} onPress={holdSeats} style={[styles.primaryButton, isSubmitting && styles.disabled]}>
-            {isSubmitting ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Bloquear asientos y continuar</Text>}
+            {isSubmitting ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Continuar al pago</Text>}
           </Pressable>
           <Pressable disabled={isSubmitting} onPress={() => setStep('fare')} style={styles.backButton}><Text style={styles.backButtonText}>Volver a tarifa</Text></Pressable>
         </>
@@ -304,6 +311,10 @@ export default function BookingScreen() {
           <Text style={styles.confirmationTitle}>¡Tu viaje está confirmado!</Text>
           <Text style={styles.confirmationText}>Código de reserva</Text>
           <Text selectable style={styles.confirmationCode}>{booking.bookingCode}</Text>
+          <Text style={styles.confirmationFlight}>{flight.code} · {selectedSeatIds.map((id) => {
+            const seat = currentSeatMap?.seats.find((item) => item.id === id);
+            return seat ? `${seat.rowNumber}${seat.columnLetter}` : null;
+          }).filter(Boolean).join(', ') || 'Asiento pendiente'} · {formatPrice(booking.totalAmount, fare?.currency ?? 'ARS')}</Text>
           <Text style={styles.confirmationText}>El pasaje ya está asociado a tu cuenta. Podés consultarlo desde Mis pasajes.</Text>
           <Pressable onPress={() => router.replace('/(tabs)/tickets')} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Ver mis pasajes</Text></Pressable>
         </View>
@@ -317,7 +328,7 @@ export default function BookingScreen() {
 
 function SeatButton({ seat, selected, onPress }: { seat: FlightSeat; selected: boolean; onPress: () => void }) {
   const disabled = seat.status !== 'FREE' || !seat.allowedForFare;
-  return <Pressable accessibilityLabel={`Asiento ${seat.rowNumber}${seat.columnLetter}${disabled ? ', no disponible' : ''}`} accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.seat, selected && styles.seatSelected, disabled && styles.seatDisabled]}><Text style={[styles.seatText, selected && styles.seatTextSelected, disabled && styles.seatTextDisabled]}>{seat.columnLetter}</Text></Pressable>;
+  return <Pressable accessibilityLabel={`Asiento ${seat.rowNumber}${seat.columnLetter}${disabled ? ', no disponible' : ''}`} accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.seat, selected && styles.seatSelected, disabled && styles.seatDisabled]}><Text style={[styles.seatText, selected && styles.seatTextSelected, disabled && styles.seatTextDisabled]}>{seat.rowNumber}{seat.columnLetter}</Text></Pressable>;
 }
 
 function Legend({ color, label }: { color: string; label: string }) {
@@ -325,16 +336,16 @@ function Legend({ color, label }: { color: string; label: string }) {
 }
 
 const styles = StyleSheet.create({
-  summaryCard: { backgroundColor: theme.colors.surfaceSoft, borderRadius: theme.radius.control, marginBottom: 22, padding: 14 },
+  summaryCard: { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1, borderRadius: theme.radius.control, marginBottom: 14, padding: 12 },
   summaryFlight: { color: theme.colors.brand, fontSize: 15, fontWeight: '700' },
   summaryDate: { color: theme.colors.muted, fontSize: 13, marginTop: 5 },
-  sectionTitle: { color: theme.colors.brand, fontSize: 17, fontWeight: '700', marginBottom: 10, marginTop: 18 },
+  sectionTitle: { color: theme.colors.brand, fontSize: 15, fontWeight: '700', marginBottom: 8, marginTop: 12 },
   counter: { alignItems: 'center', flexDirection: 'row', gap: 18, marginBottom: 5 },
   counterButton: { alignItems: 'center', backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: 10, borderWidth: 1, height: 42, justifyContent: 'center', width: 48 },
   counterButtonText: { color: theme.colors.brand, fontSize: 22, fontWeight: '600' },
   counterValue: { color: theme.colors.text, fontSize: 17, fontWeight: '700', minWidth: 22, textAlign: 'center' },
   helper: { color: theme.colors.muted, fontSize: 13, lineHeight: 19, marginBottom: 8 },
-  fareCard: { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: theme.radius.card, borderWidth: 1, marginBottom: 10, padding: 15 },
+  fareCard: { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: 7, borderWidth: 1, marginBottom: 8, padding: 12 },
   fareSelected: { backgroundColor: '#F7F1FF', borderColor: theme.colors.brand, borderWidth: 2 },
   fareHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 7 },
   fareName: { color: theme.colors.brand, flexShrink: 1, fontSize: 15, fontWeight: '700', marginRight: 8 },
@@ -347,13 +358,13 @@ const styles = StyleSheet.create({
   secondaryButton: { alignItems: 'center', backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: theme.radius.control, borderWidth: 1, marginTop: 12, padding: 14 },
   secondaryButtonText: { color: theme.colors.brand, fontSize: 14, fontWeight: '700' },
   disabled: { opacity: 0.55 },
-  seatMap: { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: theme.radius.card, borderWidth: 1, marginBottom: 16, padding: 12 },
-  seatRow: { alignItems: 'center', flexDirection: 'row', gap: 5, justifyContent: 'center', marginBottom: 6 },
-  rowNumber: { color: theme.colors.muted, fontSize: 11, marginRight: 4, width: 22 },
-  seat: { alignItems: 'center', backgroundColor: '#FFFFFF', borderColor: theme.colors.success, borderRadius: 7, borderWidth: 1, height: 34, justifyContent: 'center', width: 36 },
-  seatSelected: { backgroundColor: theme.colors.success },
-  seatDisabled: { backgroundColor: '#E5E7EB', borderColor: '#D1D5DB' },
-  seatText: { color: theme.colors.brand, fontSize: 11, fontWeight: '700' },
+  seatMap: { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: 10, borderWidth: 1, marginBottom: 12, padding: 12 },
+  seatRow: { alignItems: 'center', flexDirection: 'row', gap: 5, justifyContent: 'center', marginBottom: 5 },
+  aisle: { width: 13 },
+  seat: { alignItems: 'center', backgroundColor: '#E6EAFD', borderColor: '#CFD6F5', borderRadius: 5, borderWidth: 1, height: 28, justifyContent: 'center', width: 33 },
+  seatSelected: { backgroundColor: theme.colors.accent, borderColor: theme.colors.accent },
+  seatDisabled: { backgroundColor: '#D6D6E2', borderColor: '#D6D6E2' },
+  seatText: { color: theme.colors.brand, fontSize: 9, fontWeight: '700' },
   seatTextSelected: { color: '#FFFFFF' },
   seatTextDisabled: { color: '#9CA3AF' },
   legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center', marginTop: 12 },
@@ -379,10 +390,11 @@ const styles = StyleSheet.create({
   installments: { flexDirection: 'row', gap: 8, marginBottom: 6 },
   installment: { alignItems: 'center', backgroundColor: theme.colors.surfaceSoft, borderRadius: 9, minWidth: 58, paddingVertical: 10 },
   installmentText: { color: theme.colors.brand, fontSize: 13, fontWeight: '700' },
-  error: { color: theme.colors.danger, fontSize: 14, lineHeight: 21, marginTop: 10 },
-  confirmationCard: { alignItems: 'center', backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: theme.radius.card, borderWidth: 1, padding: 20 },
+  error: { backgroundColor: '#FFE4EA', borderColor: '#F5B3C3', borderRadius: 7, borderWidth: 1, color: '#9F1239', fontSize: 13, lineHeight: 19, marginTop: 10, padding: 10 },
+  confirmationCard: { alignItems: 'center', backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: 10, borderWidth: 1, padding: 16 },
   confirmationMark: { alignItems: 'center', backgroundColor: '#DCF5EA', borderRadius: 32, color: theme.colors.success, fontSize: 32, fontWeight: '800', height: 64, lineHeight: 64, marginBottom: 14, overflow: 'hidden', textAlign: 'center', width: 64 },
-  confirmationTitle: { color: theme.colors.brand, fontSize: 19, fontWeight: '800', marginBottom: 18, textAlign: 'center' },
+  confirmationTitle: { color: theme.colors.brand, fontSize: 16, fontWeight: '800', marginBottom: 14, textAlign: 'center' },
   confirmationText: { color: theme.colors.muted, fontSize: 14, lineHeight: 21, marginBottom: 8, textAlign: 'center' },
   confirmationCode: { color: theme.colors.accent, fontSize: 22, fontWeight: '800', letterSpacing: 1, marginBottom: 16 },
+  confirmationFlight: { color: theme.colors.text, fontSize: 12, marginBottom: 12, textAlign: 'center' },
 });
