@@ -25,8 +25,13 @@ function Logo() {
  */
 const PENDING_SECTIONS: { path: string; label: string; short: string }[] = [
   { path: 'check-in-online', label: 'Check-in Online', short: 'Check-in' },
+  // Cambio RF-01: esta si tiene pantalla. Sigue en la lista porque el filtro por rol y por
+  // seccion la usa, pero se muestra como enlace a ALTA_DE_VUELOS_HREF.
   { path: 'alta-de-vuelos-admin', label: 'Alta de Vuelos [Admin]', short: 'Admin' },
 ];
+
+/** Cambio RF-01: destino de «Alta de Vuelos [Admin]», el panel de alta y publicacion. */
+const ALTA_DE_VUELOS_HREF = '/admin/vuelos/nuevo';
 
 export type SiteHeaderUser = { name: string; role: string } | null;
 
@@ -169,7 +174,12 @@ export default function SiteHeader({ user, activePath, onNotice }: SiteHeaderPro
                 }
                 return true;
               })
-              .map((s) => (
+              .map((s) => s.path === 'alta-de-vuelos-admin' ? (
+              // Cambio RF-01: enlace al panel en lugar del aviso "en construccion".
+              <a key={s.path} className={desktopLinkCls(false)} data-path={s.path} href={ALTA_DE_VUELOS_HREF}>
+                {s.label}
+              </a>
+            ) : (
               <button
                 key={s.path}
                 className="px-space-md py-space-sm rounded-lg font-label-lg text-label-lg text-primary-fixed-dim hover:bg-primary hover:text-on-primary transition-colors"
@@ -279,7 +289,12 @@ export default function SiteHeader({ user, activePath, onNotice }: SiteHeaderPro
                 }
                 return true;
               })
-              .map((s) => (
+              .map((s) => s.path === 'alta-de-vuelos-admin' ? (
+              // Cambio RF-01: enlace al panel en lugar del aviso "en construccion".
+              <a key={s.path} className={mobileLinkCls(false)} href={ALTA_DE_VUELOS_HREF}>
+                {s.short}
+              </a>
+            ) : (
               <button
                 key={s.path}
                 className="shrink-0 px-3 py-1.5 rounded-lg font-label-md text-label-md text-primary-fixed-dim bg-primary/60"
